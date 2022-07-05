@@ -54,8 +54,8 @@ struct vdsbuffer fetch_slice(
         throw std::runtime_error("Could not open VDS: " + error.string);
     }
 
-    auto accessManager = OpenVDS::GetAccessManager(handle);
-    auto const *layout = accessManager.GetVolumeDataLayout();
+    auto access = OpenVDS::GetAccessManager(handle);
+    auto const *layout = access.GetVolumeDataLayout();
 
     dimension = tonative(dimension, layout);
 
@@ -69,23 +69,34 @@ struct vdsbuffer fetch_slice(
     voxelMin[dimension] = lineno;
     voxelMax[dimension] = lineno + 1;
 
-    auto request = accessManager.RequestVolumeSubset<float>(OpenVDS::Dimensions_012, 0, 0, voxelMin, voxelMax);
-    auto slice = request->Data();
+    auto format = layout->GetChannelFormat(0);
+    auto size = access.GetVolumeSubsetBufferSize(
+        voxelMin,
+        voxelMax,
+        format,
+        0,
+        0
+    );
 
-    /* There doesn't seam to be any straight forward way of taking ownership
-     * over a std::vector's internal buffer, which means that any pointer to
-     * that buffer is invalid after the vector goes out of scope. Hence we
-     * copy the data to a new buffer to keep the returned pointer valid until
-     * go has had a chance to parse it.
-     */
-    char *data = new char[slice.size()];
-    std::copy(slice.begin(), slice.end(), data);
+    auto *data = new char[size];
+    auto request = access.RequestVolumeSubset(
+        data,
+        size,
+        OpenVDS::Dimensions_012,
+        0,
+        0,
+        voxelMin,
+        voxelMax,
+        format
+    );
 
-    vdsbuffer buf{};
-    buf.size = slice.size();
-    buf.data = data;
+    request.get()->WaitForCompletion();
 
-    return buf;
+    vdsbuffer buffer{};
+    buffer.size = size;
+    buffer.data = data;
+
+    return buffer;
 }
 
 struct vdsbuffer slice(
