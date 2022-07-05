@@ -20,7 +20,7 @@ type Endpoint struct {
 	StorageURL string
 }
 
-func (e *Endpoint) Get(ctx *gin.Context) {
+func (e *Endpoint) SliceGet(ctx *gin.Context) {
 	var query SliceQuery
 
 	if ctx.ShouldBind(&query) != nil {

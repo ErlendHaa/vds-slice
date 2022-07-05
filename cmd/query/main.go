@@ -54,6 +54,6 @@ func main() {
 	}
 
 	app := gin.Default()
-	app.GET("slice", endpoint.Get)
+	app.GET("slice", endpoint.SliceGet)
 	app.Run(fmt.Sprintf(":%s", opts.port))
 }
