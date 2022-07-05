@@ -18,8 +18,12 @@ void vdsbuffer_delete(struct vdsbuffer* buf) {
     *buf = vdsbuffer {};
 }
 
-struct vdsbuffer fetch_slice(std::string url, std::string credentials, int dimension, int lineno)
-{
+struct vdsbuffer fetch_slice(
+    std::string url,
+    std::string credentials,
+    int dimension,
+    int lineno
+) {
     OpenVDS::Error error;
     OpenVDS::VDSHandle handle = OpenVDS::Open(url, credentials, error);
 
@@ -59,10 +63,12 @@ struct vdsbuffer fetch_slice(std::string url, std::string credentials, int dimen
     return buf;
 }
 
-struct vdsbuffer slice(const char* vds,
-                       const char* credentials,
-                       int dim,
-                       int lineno) {
+struct vdsbuffer slice(
+    const char* vds,
+    const char* credentials,
+    int dim,
+    int lineno
+) {
     std::string cube(vds);
     std::string cred(credentials);
 
