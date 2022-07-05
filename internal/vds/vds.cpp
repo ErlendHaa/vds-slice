@@ -18,6 +18,29 @@ void vdsbuffer_delete(struct vdsbuffer* buf) {
     *buf = vdsbuffer {};
 }
 
+static const char *vds_dimensions[] = {
+    "Inline",
+    "Crossline",
+    "Sample"
+};
+
+int tonative(int targetdim, const OpenVDS::VolumeDataLayout *layout) {
+    if (targetdim < 0 || targetdim > 3) {
+        throw std::runtime_error("Invalid dimension: " + std::to_string(targetdim));
+    }
+
+    const auto *targetname = vds_dimensions[targetdim];
+    for (int i = 0; i < 3; i++) {
+        const auto *name = layout->GetDimensionName(i);
+
+        if (std::strcmp(name, targetname) == 0) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Unable to convert direction to VDS dimension");
+};
+
 struct vdsbuffer fetch_slice(
     std::string url,
     std::string credentials,
@@ -33,6 +56,8 @@ struct vdsbuffer fetch_slice(
 
     auto accessManager = OpenVDS::GetAccessManager(handle);
     auto const *layout = accessManager.GetVolumeDataLayout();
+
+    dimension = tonative(dimension, layout);
 
     int voxelMin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
     int voxelMax[OpenVDS::Dimensionality_Max] = { 1, 1, 1, 1, 1, 1};
