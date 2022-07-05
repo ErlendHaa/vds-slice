@@ -11,9 +11,9 @@ import (
 )
 
 type SliceQuery struct {
-	Vds    string `form:"vds"`
-	Dim    int    `form:"dim"`
-	Lineno int    `form:"lineno"`
+	Vds       string `form:"vds"`
+	Direction int    `form:"direction"`
+	Lineno    int    `form:"lineno"`
 }
 
 type Endpoint struct {
@@ -30,7 +30,7 @@ func (e *Endpoint) Get(ctx *gin.Context) {
 	querystr := ctx.Request.URL.Query()
 
 	delete(querystr, "vds")
-	delete(querystr, "dim")
+	delete(querystr, "direction")
 	delete(querystr, "lineno")
 
 	url := fmt.Sprintf("azure://%v", query.Vds)
@@ -45,7 +45,7 @@ func (e *Endpoint) Get(ctx *gin.Context) {
 		querystr.Encode(),
 	)
 
-	buffer, err := vds.GetSlice(url, cred, query.Dim, query.Lineno)
+	buffer, err := vds.GetSlice(url, cred, query.Direction, query.Lineno)
 	if err != nil {
 		log.Println(err)
 		ctx.AbortWithStatus(http.StatusInternalServerError)

@@ -13,7 +13,7 @@ struct vdsbuffer {
 
 struct vdsbuffer fetch_slice(const char* vds,
                              const char* credentials,
-                             int dim,
+                             int direction,
                              int lineno);
 
 void vdsbuffer_delete(struct vdsbuffer*);
