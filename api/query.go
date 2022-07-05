@@ -45,7 +45,7 @@ func (e *Endpoint) Get(ctx *gin.Context) {
 		querystr.Encode(),
 	)
 
-	buffer, err := vds.GetSlice(url, cred, query.Direction, query.Lineno)
+	buffer, err := vds.Slice(url, cred, query.Direction, query.Lineno)
 	if err != nil {
 		log.Println(err)
 		ctx.AbortWithStatus(http.StatusInternalServerError)

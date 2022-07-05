@@ -13,7 +13,7 @@ import (
 	"errors"
 )
 
-func GetSlice(vds, credentials string, direction, lineno int) ([]byte, error) {
+func Slice(vds, credentials string, direction, lineno int) ([]byte, error) {
 	cvds := C.CString(vds)
 	defer C.free(unsafe.Pointer(cvds))
 
