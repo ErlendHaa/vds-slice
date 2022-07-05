@@ -20,7 +20,7 @@ func GetSlice(vds, credentials string, direction, lineno int) ([]byte, error) {
 	ccred := C.CString(credentials)
 	defer C.free(unsafe.Pointer(ccred))
 
-	result := C.fetch_slice(
+	result := C.slice(
 		cvds,
 		ccred,
 		C.int(direction),

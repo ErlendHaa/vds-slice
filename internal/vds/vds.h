@@ -11,10 +11,10 @@ struct vdsbuffer {
     unsigned long size;
 };
 
-struct vdsbuffer fetch_slice(const char* vds,
-                             const char* credentials,
-                             int direction,
-                             int lineno);
+struct vdsbuffer slice(const char* vds,
+                       const char* credentials,
+                       int direction,
+                       int lineno);
 
 void vdsbuffer_delete(struct vdsbuffer*);
 
