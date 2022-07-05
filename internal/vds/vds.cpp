@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
+#include <stdexcept>
 
 #include <OpenVDS/IJKCoordinateTransformer.h>
 #include <OpenVDS/OpenVDS.h>
