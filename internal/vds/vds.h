@@ -14,7 +14,7 @@ struct vdsbuffer {
 struct vdsbuffer slice(
     const char* vds,
     const char* credentials,
-    int direction,
+    const char* direction,
     int lineno
 );
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,9 +12,24 @@ import (
 )
 
 type SliceQuery struct {
-	Vds       string `form:"vds"`
-	Direction int    `form:"direction"`
-	Lineno    int    `form:"lineno"`
+	Vds       string `form:"vds"       json:"vds"       binding:"required"`
+	Direction string `form:"direction" json:"direction" binding:"required"`
+	Lineno    int    `form:"lineno"    json:"lineno"   `
+}
+
+var directions = map[string]string{
+	"iline": "Inline",
+	"xline": "Crossline",
+	"sampe": "Sample",
+}
+
+func vdsdirection(direction string) (string, error) {
+	if val, ok := directions[direction]; ok {
+		return val, nil
+	}
+
+	msg := "Invalid direction. Expected 'iline', 'xline' or 'sample', got: %v"
+	return "", errors.New(fmt.Sprintf(msg, direction))
 }
 
 type Endpoint struct {
@@ -27,10 +43,17 @@ func (e *Endpoint) Health(ctx *gin.Context) {
 func (e *Endpoint) SliceGet(ctx *gin.Context) {
 	var query SliceQuery
 
-	if ctx.ShouldBind(&query) != nil {
-		ctx.AbortWithStatus(http.StatusBadRequest)
+	if err := ctx.ShouldBind(&query); err != nil {
+		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
+
+	dir, err := vdsdirection(query.Direction)
+	if err != nil {
+		ctx.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+
 	querystr := ctx.Request.URL.Query()
 
 	delete(querystr, "vds")
@@ -49,7 +72,7 @@ func (e *Endpoint) SliceGet(ctx *gin.Context) {
 		querystr.Encode(),
 	)
 
-	buffer, err := vds.Slice(url, cred, query.Direction, query.Lineno)
+	buffer, err := vds.Slice(url, cred, dir, query.Lineno)
 	if err != nil {
 		log.Println(err)
 		ctx.AbortWithStatus(http.StatusInternalServerError)

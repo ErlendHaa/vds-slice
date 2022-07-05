@@ -19,33 +19,27 @@ void vdsbuffer_delete(struct vdsbuffer* buf) {
     *buf = vdsbuffer {};
 }
 
-static const char *vds_dimensions[] = {
-    "Inline",
-    "Crossline",
-    "Sample"
-};
 
-int tonative(int targetdim, const OpenVDS::VolumeDataLayout *layout) {
-    if (targetdim < 0 || targetdim > 3) {
-        throw std::runtime_error("Invalid dimension: " + std::to_string(targetdim));
-    }
-
-    const auto *targetname = vds_dimensions[targetdim];
+int todimension(std::string direction, const OpenVDS::VolumeDataLayout *layout) {
     for (int i = 0; i < 3; i++) {
-        const auto *name = layout->GetDimensionName(i);
+        std::string name(layout->GetDimensionName(i));
 
-        if (std::strcmp(name, targetname) == 0) {
+        if (direction.compare(name) == 0) {
             return i;
         }
     }
 
-    throw std::runtime_error("Unable to convert direction to VDS dimension");
+    throw std::runtime_error(
+        "Unable to convert direction '" +
+        direction +
+        "' to VDS dimension"
+    );
 };
 
 struct vdsbuffer fetch_slice(
     std::string url,
     std::string credentials,
-    int dimension,
+    std::string direction,
     int lineno
 ) {
     OpenVDS::Error error;
@@ -58,7 +52,7 @@ struct vdsbuffer fetch_slice(
     auto access = OpenVDS::GetAccessManager(handle);
     auto const *layout = access.GetVolumeDataLayout();
 
-    dimension = tonative(dimension, layout);
+    auto dimension = todimension(direction, layout);
 
     int voxelMin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
     int voxelMax[OpenVDS::Dimensionality_Max] = { 1, 1, 1, 1, 1, 1};
@@ -103,14 +97,15 @@ struct vdsbuffer fetch_slice(
 struct vdsbuffer slice(
     const char* vds,
     const char* credentials,
-    int dim,
+    const char* direction,
     int lineno
 ) {
     std::string cube(vds);
     std::string cred(credentials);
+    std::string dir(direction);
 
     try {
-        return fetch_slice(cube, cred, dim, lineno);
+        return fetch_slice(cube, cred, dir, lineno);
     } catch (const std::exception& e) {
         vdsbuffer buf {};
         buf.err = new char[std::strlen(e.what()) + 1];

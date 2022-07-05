@@ -13,17 +13,20 @@ import (
 	"errors"
 )
 
-func Slice(vds, credentials string, direction, lineno int) ([]byte, error) {
+func Slice(vds, credentials, direction string, lineno int) ([]byte, error) {
 	cvds := C.CString(vds)
 	defer C.free(unsafe.Pointer(cvds))
 
 	ccred := C.CString(credentials)
 	defer C.free(unsafe.Pointer(ccred))
 
+	cdirection := C.CString(direction)
+	defer C.free(unsafe.Pointer(cdirection))
+
 	result := C.slice(
 		cvds,
 		ccred,
-		C.int(direction),
+		cdirection,
 		C.int(lineno),
 	)
 
