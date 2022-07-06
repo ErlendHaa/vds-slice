@@ -14,7 +14,7 @@ import (
 type SliceQuery struct {
 	Vds       string `form:"vds"       json:"vds"       binding:"required"`
 	Direction string `form:"direction" json:"direction" binding:"required"`
-	Lineno    int    `form:"lineno"    json:"lineno"   `
+	Lineno    *int   `form:"lineno"    json:"lineno"    binding:"required"`
 }
 
 var directions = map[string]string{
@@ -72,7 +72,7 @@ func (e *Endpoint) SliceGet(ctx *gin.Context) {
 		querystr.Encode(),
 	)
 
-	buffer, err := vds.Slice(url, cred, dir, query.Lineno)
+	buffer, err := vds.Slice(url, cred, dir, *query.Lineno)
 	if err != nil {
 		log.Println(err)
 		ctx.AbortWithStatus(http.StatusInternalServerError)
