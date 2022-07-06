@@ -40,7 +40,7 @@ func (e *Endpoint) Health(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "I am up and running")
 }
 
-func (e *Endpoint) SliceGet(ctx *gin.Context) {
+func (e *Endpoint) Slice(ctx *gin.Context) {
 	var query SliceQuery
 
 	if err := ctx.ShouldBind(&query); err != nil {
