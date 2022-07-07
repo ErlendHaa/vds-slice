@@ -11,11 +11,22 @@ struct vdsbuffer {
     unsigned long size;
 };
 
+enum axis {
+    X      = 0,
+    Y      = 1,
+    Z      = 2,
+    ILINE  = 3,
+    XLINE  = 4,
+    DEPTH  = 5,
+    TIME   = 6,
+    SAMPLE = 7,
+};
+
 struct vdsbuffer slice(
     const char* vds,
     const char* credentials,
-    const char* direction,
-    int lineno
+    int lineno,
+    enum axis direction
 );
 
 void vdsbuffer_delete(struct vdsbuffer*);

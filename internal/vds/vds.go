@@ -13,21 +13,29 @@ import (
 	"errors"
 )
 
-func Slice(vds, credentials, direction string, lineno int) ([]byte, error) {
+const (
+	AxisX      = C.X
+	AxisY      = C.Y
+	AxisZ      = C.Z
+	AxisIline  = C.ILINE
+	AxisXline  = C.XLINE
+	AxisDepth  = C.DEPTH
+	AxisTime   = C.TIME
+	AxisSample = C.SAMPLE
+)
+
+func Slice(vds, credentials string, lineno, direction int) ([]byte, error) {
 	cvds := C.CString(vds)
 	defer C.free(unsafe.Pointer(cvds))
 
 	ccred := C.CString(credentials)
 	defer C.free(unsafe.Pointer(ccred))
 
-	cdirection := C.CString(direction)
-	defer C.free(unsafe.Pointer(cdirection))
-
 	result := C.slice(
 		cvds,
 		ccred,
-		cdirection,
 		C.int(lineno),
+		C.enum_axis(direction),
 	)
 
 	defer C.vdsbuffer_delete(&result)

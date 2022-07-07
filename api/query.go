@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,19 +18,20 @@ type SliceQuery struct {
 	Lineno    *int   `form:"lineno"    json:"lineno"    binding:"required"`
 }
 
-var directions = map[string]string{
-	"iline": "Inline",
-	"xline": "Crossline",
-	"sampe": "Sample",
-}
-
-func vdsdirection(direction string) (string, error) {
-	if val, ok := directions[direction]; ok {
-		return val, nil
+func getAxis(direction string) (int, error) {
+	switch direction {
+		case "x":      return vds.AxisX,      nil
+		case "y":      return vds.AxisY,      nil
+		case "z":      return vds.AxisZ,      nil
+		case "iline":  return vds.AxisIline,  nil
+		case "xline":  return vds.AxisXline,  nil
+		case "depth":  return vds.AxisDepth,  nil
+		case "time":   return vds.AxisTime,   nil
+		case "sample": return vds.AxisSample, nil
+		default:
+			msg := fmt.Sprintf("Invalid direction %v", direction)
+			return 0, errors.New(msg)
 	}
-
-	msg := "Invalid direction. Expected 'iline', 'xline' or 'sample', got: %v"
-	return "", errors.New(fmt.Sprintf(msg, direction))
 }
 
 type Endpoint struct {
@@ -44,12 +46,6 @@ func (e *Endpoint) Slice(ctx *gin.Context) {
 	var query SliceQuery
 
 	if err := ctx.ShouldBind(&query); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
-
-	dir, err := vdsdirection(query.Direction)
-	if err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
@@ -72,7 +68,14 @@ func (e *Endpoint) Slice(ctx *gin.Context) {
 		querystr.Encode(),
 	)
 
-	buffer, err := vds.Slice(url, cred, dir, *query.Lineno)
+	axis, err := getAxis(strings.ToLower(query.Direction))
+
+	if err != nil {
+		ctx.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+
+	buffer, err := vds.Slice(url, cred, *query.Lineno, axis)
 	if err != nil {
 		log.Println(err)
 		ctx.AbortWithStatus(http.StatusInternalServerError)
