@@ -10,7 +10,6 @@
 
 #include <OpenVDS/OpenVDS.h>
 #include <OpenVDS/KnownMetadata.h>
-#include <OpenVDS/IJKCoordinateTransformer.h>
 
 using namespace std;
 
@@ -28,7 +27,7 @@ enum coord_system {
     ANNOTATION = 1,
 };
 
-int todimension(axis ax) {
+int axis_todim(axis ax) {
     switch (ax) {
         case X:
         case ILINE:
@@ -44,7 +43,7 @@ int todimension(axis ax) {
     }
 }
 
-coord_system tosystem(axis ax) {
+coord_system axis_tosystem(axis ax) {
     switch (ax) {
         case X:
         case Y:
@@ -133,28 +132,45 @@ void axisvalidation(axis ax, const OpenVDS::VolumeDataLayout* layout) {
     }
 }
 
+int dim_tovoxel(int dimension, const OpenVDS::VolumeDataLayout *layout) {
+    const char *primary = layout->GetDimensionName(1);
+    bool il_isprimary = !std::strcmp(primary, OpenVDS::KnownAxisNames::Inline());
+
+    switch (dimension) {
+        case 0:
+            return il_isprimary ? 1 : 2;
+        case 1:
+            return il_isprimary ? 2 : 1;
+        case 2:
+            return 0;
+        default: {
+            throw std::runtime_error("Unhandled axis");
+        }
+    }
+}
+
+int lineno_tovoxel(int lineno, int vdim, const OpenVDS::VolumeDataLayout *layout) {
+    auto min      = layout->GetDimensionMin(vdim);
+    auto max      = layout->GetDimensionMax(vdim);
+    auto nsamples = layout->GetDimensionNumSamples(vdim);
+
+    auto stride    = (max - min) / (nsamples - 1);
+    auto voxelline = (lineno - min) / stride;
+
+    return voxelline;
+}
+
 /*
  * Convert target dimension/axis + lineno to VDS voxel coordinates.
  */
 void set_voxels(
-    coord_system sys,
+    axis ax,
     int dimension,
     int lineno,
     const OpenVDS::VolumeDataLayout *layout,
     int (&voxelmin)[OpenVDS::VolumeDataLayout::Dimensionality_Max],
     int (&voxelmax)[OpenVDS::VolumeDataLayout::Dimensionality_Max]
 ) {
-
-    /*
-     * This seams to be a very roundabout way of converting from
-     * dimension/slice to voxel coordinates which might be improved upon in the
-     * future.
-     *
-     * 1) Init min/max to span from 0 - samplemax (Voxel)
-     * 2) Convert to index or annotation
-     * 3) Update the target dimension
-     * 4) Convert back to voxel
-     */
     auto vmin = OpenVDS::IntVector3 { 0, 0, 0 };
     auto vmax = OpenVDS::IntVector3 {
         layout->GetDimensionNumSamples(0) - 1,
@@ -162,29 +178,25 @@ void set_voxels(
         layout->GetDimensionNumSamples(2) - 1
     };
 
-    auto transformer = OpenVDS::IJKCoordinateTransformer(layout);
-
-    switch (sys) {
+    int voxelline;
+    auto vdim   = dim_tovoxel(dimension, layout);
+    auto system = axis_tosystem(ax);
+    switch (system) {
         case ANNOTATION: {
-            auto amin = transformer.VoxelIndexToAnnotation(vmin);
-            auto amax = transformer.VoxelIndexToAnnotation(vmax);
-            amin[dimension] = lineno;
-            amax[dimension] = lineno + 1;
-            vmin = transformer.AnnotationToVoxelIndex(amin);
-            vmax = transformer.AnnotationToVoxelIndex(amax);
+            voxelline = lineno_tovoxel(lineno, vdim, layout);
             break;
         }
         case INDEX: {
-            auto imin = transformer.VoxelIndexToIJKIndex(vmin);
-            auto imax = transformer.VoxelIndexToIJKIndex(vmax);
-            imin[dimension] = lineno;
-            imax[dimension] = lineno + 1;
-            vmin = transformer.IJKIndexToVoxelIndex(imin);
-            vmax = transformer.IJKIndexToVoxelIndex(imax);
+            /* Line-numbers in IJK match Voxel */
+            voxelline = lineno;
             break;
         }
     }
 
+    vmin[vdim] = voxelline;
+    vmax[vdim] = voxelline + 1;
+
+    /* Commit */
     for (int i = 0; i < 3; i++) {
         voxelmin[i] = vmin[i];
         voxelmax[i] = vmax[i];
@@ -211,13 +223,11 @@ struct vdsbuffer fetch_slice(
 
     int vmin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
     int vmax[OpenVDS::Dimensionality_Max] = { 1, 1, 1, 1, 1, 1};
-    auto dimension = todimension(ax);
-    auto sys = tosystem(ax);
-    set_voxels(sys, dimension, lineno, layout, vmin, vmax);
+    auto dimension = axis_todim(ax);
+    set_voxels(ax, dimension, lineno, layout, vmin, vmax);
 
     auto format = layout->GetChannelFormat(0);
     auto size = access.GetVolumeSubsetBufferSize(vmin, vmax, format, 0, 0);
-
 
     auto *data = new char[size];
     auto request = access.RequestVolumeSubset(
