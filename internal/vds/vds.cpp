@@ -81,7 +81,7 @@ const std::string axis_tostring(axis ax) {
  * E.g. a Time slice is only valid if the units of the Z-axis in the VDS is
  * "Seconds" or "Milliseconds"
  */
-bool zaxisvalidation(axis ax, const char* zunit) {
+bool unitvalidation(axis ax, const char* zunit) {
     /* Define some convenient lookup tables for units */
     static const std::array< const char*, 3 > depthunits = {
         OpenVDS::KnownUnitNames::Meter(),
@@ -121,11 +121,52 @@ bool zaxisvalidation(axis ax, const char* zunit) {
     }
 };
 
+/*
+ * Until we know more about how VDS' are constructed w.r.t. to axis ordering
+ * we're gonna assume that all VDS' are ordered like so:
+ *
+ *     voxel[0] -> depth/time/sample
+ *     voxel[1] -> crossline
+ *     voxel[2] -> inline
+ *
+ * This function will return 0 if that's not the case
+ */
+bool axis_order_validation(axis ax, const OpenVDS::VolumeDataLayout *layout) {
+    if (std::strcmp(layout->GetDimensionName(2), OpenVDS::KnownAxisNames::Inline())) {
+        return false;
+    }
+
+    if (std::strcmp(layout->GetDimensionName(1), OpenVDS::KnownAxisNames::Crossline())) {
+        return false;
+    }
+
+    auto z = layout->GetDimensionName(0);
+
+    /* Define some convenient lookup tables for units */
+    static const std::array< const char*, 3 > depth = {
+        OpenVDS::KnownAxisNames::Depth(),
+        OpenVDS::KnownAxisNames::Time(),
+        OpenVDS::KnownAxisNames::Sample()
+    };
+
+    auto isoneof = [z](const char* x) {
+        return !std::strcmp(x, z);
+    };
+
+    return std::any_of(depth.begin(), depth.end(), isoneof);
+}
+
+
 void axisvalidation(axis ax, const OpenVDS::VolumeDataLayout* layout) {
-    /* This assumes that the Z-axis is always the first one in the VDS */
+    if (not axis_order_validation(ax, layout)) {
+        std::string msg = "Unsupported axis ordering in VDS, expected ";
+        msg += "Depth/Time/Sample, Crossline, Inline";
+        throw std::runtime_error(msg);
+    }
+
     auto zaxis = layout->GetAxisDescriptor(0);
     const char* zunit = zaxis.GetUnit();
-    if (not zaxisvalidation(ax, zunit)) {
+    if (not unitvalidation(ax, zunit)) {
         std::string msg = "Unable to use " + axis_tostring(ax);
         msg += " on cube with depth units: " + std::string(zunit);
         throw std::runtime_error(msg);
@@ -133,16 +174,14 @@ void axisvalidation(axis ax, const OpenVDS::VolumeDataLayout* layout) {
 }
 
 int dim_tovoxel(int dimension, const OpenVDS::VolumeDataLayout *layout) {
-    const char *primary = layout->GetDimensionName(1);
-    bool il_isprimary = !std::strcmp(primary, OpenVDS::KnownAxisNames::Inline());
-
+    /*
+     * For now assume that the axis order is always depth/time/sample,
+     * crossline, inline. This should be checked elsewhere.
+     */
     switch (dimension) {
-        case 0:
-            return il_isprimary ? 1 : 2;
-        case 1:
-            return il_isprimary ? 2 : 1;
-        case 2:
-            return 0;
+        case 0: return 2;
+        case 1: return 1;
+        case 2: return 0;
         default: {
             throw std::runtime_error("Unhandled axis");
         }
