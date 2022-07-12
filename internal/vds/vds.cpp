@@ -312,10 +312,6 @@ struct vdsbuffer fetch_slice_metadata(
     auto dimension = axis_todim(ax);
     auto vdim = dim_tovoxel(dimension, layout);
 
-
-    // TODO verify 3 dimension, if not throw
-
-    // Create a struct and parse to json before sending bytes to go
     nlohmann::json meta;
     meta["format"] = layout->GetChannelFormat(0); //TODO turn into numpy-style format?
     meta["axis"]   = nlohmann::json::array();
