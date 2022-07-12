@@ -8,6 +8,8 @@
 #include <string>
 #include <stdexcept>
 
+#include "nlohmann/json.hpp"
+
 #include <OpenVDS/OpenVDS.h>
 #include <OpenVDS/KnownMetadata.h>
 
@@ -289,6 +291,57 @@ struct vdsbuffer fetch_slice(
     return buffer;
 }
 
+struct vdsbuffer fetch_slice_metadata(
+    std::string url,
+    std::string credentials,
+    axis ax,
+    int lineno
+) {
+    OpenVDS::Error error;
+    OpenVDS::VDSHandle handle = OpenVDS::Open(url, credentials, error);
+
+    if(error.code != 0) {
+        throw std::runtime_error("Could not open VDS: " + error.string);
+    }
+
+    auto access = OpenVDS::GetAccessManager(handle);
+    auto const *layout = access.GetVolumeDataLayout();
+
+    axisvalidation(ax, layout);
+
+    auto dimension = axis_todim(ax);
+    auto vdim = dim_tovoxel(dimension, layout);
+
+
+    // TODO verify 3 dimension, if not throw
+
+    // Create a struct and parse to json before sending bytes to go
+    nlohmann::json meta;
+    meta["format"] = layout->GetChannelFormat(0); //TODO turn into numpy-style format?
+    meta["axis"]   = nlohmann::json::array();
+
+    for (int i = 2; i >= 0; i--) {
+        if (i == vdim) continue;
+        meta["axis"].push_back({
+            { "Annotation", layout->GetDimensionName(i)       },
+            { "min",        layout->GetDimensionMin(i)        },
+            { "max",        layout->GetDimensionMax(i)        },
+            { "samples",    layout->GetDimensionNumSamples(i) },
+            { "unit",       layout->GetDimensionUnit(i)       },
+        });
+    }
+
+    auto str = meta.dump();
+    auto *data = new char[str.size()];
+    std::copy(str.begin(), str.end(), data);
+
+    vdsbuffer buffer{};
+    buffer.size = str.size();
+    buffer.data = data;
+
+    return buffer;
+}
+
 struct vdsbuffer slice(
     const char* vds,
     const char* credentials,
@@ -300,6 +353,25 @@ struct vdsbuffer slice(
 
     try {
         return fetch_slice(cube, cred, ax, lineno);
+    } catch (const std::exception& e) {
+        vdsbuffer buf {};
+        buf.err = new char[std::strlen(e.what()) + 1];
+        std::strcpy(buf.err, e.what());
+        return buf;
+    }
+}
+
+struct vdsbuffer slice_metadata(
+    const char* vds,
+    const char* credentials,
+    int lineno,
+    axis ax
+) {
+    std::string cube(vds);
+    std::string cred(credentials);
+
+    try {
+        return fetch_slice_metadata(cube, cred, ax, lineno);
     } catch (const std::exception& e) {
         vdsbuffer buf {};
         buf.err = new char[std::strlen(e.what()) + 1];

@@ -29,6 +29,13 @@ struct vdsbuffer slice(
     enum axis direction
 );
 
+struct vdsbuffer slice_metadata(
+    const char* vds,
+    const char* credentials,
+    int lineno,
+    enum axis direction
+);
+
 void vdsbuffer_delete(struct vdsbuffer*);
 
 
