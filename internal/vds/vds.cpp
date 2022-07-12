@@ -212,9 +212,9 @@ void set_voxels(
 ) {
     auto vmin = OpenVDS::IntVector3 { 0, 0, 0 };
     auto vmax = OpenVDS::IntVector3 {
-        layout->GetDimensionNumSamples(0) - 1,
-        layout->GetDimensionNumSamples(1) - 1,
-        layout->GetDimensionNumSamples(2) - 1
+        layout->GetDimensionNumSamples(0),
+        layout->GetDimensionNumSamples(1),
+        layout->GetDimensionNumSamples(2)
     };
 
     int voxelline;
