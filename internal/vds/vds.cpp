@@ -62,14 +62,14 @@ coord_system axis_tosystem(axis ax) {
 
 const std::string axis_tostring(axis ax) {
     switch (ax) {
-        case I:      return std::string( OpenVDS::KnownAxisNames::X()    );
-        case J:      return std::string( OpenVDS::KnownAxisNames::Y()    );
-        case K:      return std::string( OpenVDS::KnownAxisNames::Z()    );
-        case INLINE:  return std::string( OpenVDS::KnownAxisNames::Inline()    );
-        case CROSSLINE:  return std::string( OpenVDS::KnownAxisNames::Crossline() );
-        case DEPTH:  return std::string( OpenVDS::KnownAxisNames::Depth()     );
-        case TIME:   return std::string( OpenVDS::KnownAxisNames::Time()      );
-        case SAMPLE: return std::string( OpenVDS::KnownAxisNames::Sample()    );
+        case I:         return std::string( OpenVDS::KnownAxisNames::X()         );
+        case J:         return std::string( OpenVDS::KnownAxisNames::Y()         );
+        case K:         return std::string( OpenVDS::KnownAxisNames::Z()         );
+        case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
+        case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
+        case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
+        case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
+        case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
         default: {
             throw std::runtime_error("Unhandled axis");
         }
