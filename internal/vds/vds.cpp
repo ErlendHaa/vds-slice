@@ -42,6 +42,9 @@ int axis_todim(axis ax) {
         case TIME:
         case SAMPLE:
             return 2;
+        default: {
+            throw std::runtime_error("Unhandled axis");
+        }
     }
 }
 
@@ -57,6 +60,9 @@ coord_system axis_tosystem(axis ax) {
         case TIME:
         case SAMPLE:
             return ANNOTATION;
+        default: {
+            throw std::runtime_error("Unhandled axis");
+        }
     }
 }
 
