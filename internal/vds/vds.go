@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	AxisX      = C.X
-	AxisY      = C.Y
-	AxisZ      = C.Z
-	AxisIline  = C.ILINE
-	AxisXline  = C.XLINE
-	AxisDepth  = C.DEPTH
-	AxisTime   = C.TIME
-	AxisSample = C.SAMPLE
+	AxisI         = C.I
+	AxisJ         = C.J
+	AxisK         = C.K
+	AxisInline    = C.INLINE
+	AxisCrossline = C.CROSSLINE
+	AxisDepth     = C.DEPTH
+	AxisTime      = C.TIME
+	AxisSample    = C.SAMPLE
 )
 
 func Slice(vds, credentials string, lineno, direction int) ([]byte, error) {

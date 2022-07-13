@@ -20,17 +20,18 @@ type SliceQuery struct {
 
 func getAxis(direction string) (int, error) {
 	switch direction {
-		case "x":      return vds.AxisX,      nil
-		case "y":      return vds.AxisY,      nil
-		case "z":      return vds.AxisZ,      nil
-		case "iline":  return vds.AxisIline,  nil
-		case "xline":  return vds.AxisXline,  nil
-		case "depth":  return vds.AxisDepth,  nil
-		case "time":   return vds.AxisTime,   nil
-		case "sample": return vds.AxisSample, nil
+		case "i":         return vds.AxisI,         nil
+		case "j":         return vds.AxisJ,         nil
+		case "k":         return vds.AxisK,         nil
+		case "inline":    return vds.AxisInline,    nil
+		case "crossline": return vds.AxisCrossline, nil
+		case "depth":     return vds.AxisDepth,     nil
+		case "time":      return vds.AxisTime,      nil
+		case "sample":    return vds.AxisSample,    nil
 		default:
-			msg := fmt.Sprintf("Invalid direction %v", direction)
-			return 0, errors.New(msg)
+			options := "i, j, k, inline, crossline or depth/time/sample"
+			msg := "Invalid direction '%s', valid options are: %s"
+			return 0, errors.New(fmt.Sprintf(msg, direction, options))
 	}
 }
 

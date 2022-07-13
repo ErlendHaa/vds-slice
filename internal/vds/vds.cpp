@@ -31,13 +31,13 @@ enum coord_system {
 
 int axis_todim(axis ax) {
     switch (ax) {
-        case X:
-        case ILINE:
+        case I:
+        case INLINE:
             return 0;
-        case Y:
-        case XLINE:
+        case J:
+        case CROSSLINE:
             return 1;
-        case Z:
+        case K:
         case DEPTH:
         case TIME:
         case SAMPLE:
@@ -47,12 +47,12 @@ int axis_todim(axis ax) {
 
 coord_system axis_tosystem(axis ax) {
     switch (ax) {
-        case X:
-        case Y:
-        case Z:
+        case I:
+        case J:
+        case K:
             return INDEX;
-        case ILINE:
-        case XLINE:
+        case INLINE:
+        case CROSSLINE:
         case DEPTH:
         case TIME:
         case SAMPLE:
@@ -62,11 +62,11 @@ coord_system axis_tosystem(axis ax) {
 
 const std::string axis_tostring(axis ax) {
     switch (ax) {
-        case X:      return std::string( OpenVDS::KnownAxisNames::X()    );
-        case Y:      return std::string( OpenVDS::KnownAxisNames::Y()    );
-        case Z:      return std::string( OpenVDS::KnownAxisNames::Z()    );
-        case ILINE:  return std::string( OpenVDS::KnownAxisNames::Inline()    );
-        case XLINE:  return std::string( OpenVDS::KnownAxisNames::Crossline() );
+        case I:      return std::string( OpenVDS::KnownAxisNames::X()    );
+        case J:      return std::string( OpenVDS::KnownAxisNames::Y()    );
+        case K:      return std::string( OpenVDS::KnownAxisNames::Z()    );
+        case INLINE:  return std::string( OpenVDS::KnownAxisNames::Inline()    );
+        case CROSSLINE:  return std::string( OpenVDS::KnownAxisNames::Crossline() );
         case DEPTH:  return std::string( OpenVDS::KnownAxisNames::Depth()     );
         case TIME:   return std::string( OpenVDS::KnownAxisNames::Time()      );
         case SAMPLE: return std::string( OpenVDS::KnownAxisNames::Sample()    );
@@ -105,11 +105,11 @@ bool unitvalidation(axis ax, const char* zunit) {
     };
 
     switch (ax) {
-        case X:
-        case Y:
-        case Z:
-        case ILINE:
-        case XLINE:
+        case I:
+        case J:
+        case K:
+        case INLINE:
+        case CROSSLINE:
             return true;
         case DEPTH:
             return std::any_of(depthunits.begin(), depthunits.end(), isoneof);

@@ -35,7 +35,7 @@ def getslice(lineno, direction):
 
 
 def test_inline_slice():
-    _, slice = getslice(3, 'iline')
+    _, slice = getslice(3, 'inline')
     print (slice)
     assert len(slice) == 2
     np.testing.assert_array_equal(slice[0], np.array([116, 117, 118, 119]))

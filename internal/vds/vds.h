@@ -12,14 +12,14 @@ struct vdsbuffer {
 };
 
 enum axis {
-    X      = 0,
-    Y      = 1,
-    Z      = 2,
-    ILINE  = 3,
-    XLINE  = 4,
-    DEPTH  = 5,
-    TIME   = 6,
-    SAMPLE = 7,
+    I         = 0,
+    J         = 1,
+    K         = 2,
+    INLINE    = 3,
+    CROSSLINE = 4,
+    DEPTH     = 5,
+    TIME      = 6,
+    SAMPLE    = 7,
 };
 
 struct vdsbuffer slice(
