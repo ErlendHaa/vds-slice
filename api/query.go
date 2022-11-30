@@ -107,7 +107,7 @@ func (e *Endpoint) slice(ctx *gin.Context, query SliceRequest) {
 		return
 	}
 
-	metadata, err := vds.GetSliceMetadata(*conn, *query.Lineno, axis)
+	metadata, err := vds.GetSliceMetadata(*conn, axis)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return
