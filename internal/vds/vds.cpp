@@ -494,7 +494,11 @@ struct vdsbuffer fetch_slice(
         format
     );
 
-    request.get()->WaitForCompletion();
+    bool success = request.get()->WaitForCompletion();
+    if(!success) {
+        const auto msg = "Failed to fetch fence from VDS";
+        throw std::runtime_error(msg);
+    }
 
     return internal::vdsbuffer_from_requested_data(data, size);
 }
@@ -624,7 +628,6 @@ struct vdsbuffer fetch_fence(
             0
     );
     bool success = request.get()->WaitForCompletion();
-
     if(!success) {
         const auto msg = "Failed to fetch fence from VDS";
         throw std::runtime_error(msg);
