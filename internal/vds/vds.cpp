@@ -21,6 +21,19 @@
 using namespace std;
 
 namespace internal {
+
+    vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
+        vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
+        std::copy(dump.begin(), dump.end(), tmp.data);
+        return tmp;
+    }
+
+    vdsbuffer vdsbuffer_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
+        vdsbuffer tmp{ data.get(), nullptr, size };
+        data.release();
+        return tmp;
+    }
+
     class VDSHandle {
 
         private:
@@ -483,13 +496,7 @@ struct vdsbuffer fetch_slice(
 
     request.get()->WaitForCompletion();
 
-    vdsbuffer buffer{};
-    buffer.size = size;
-    buffer.data = data.get();
-
-    /* The buffer should *not* be free'd on success, as it's returned to CGO */
-    data.release();
-    return buffer;
+    return internal::vdsbuffer_from_requested_data(data, size);
 }
 
 struct vdsbuffer fetch_slice_metadata(
@@ -529,15 +536,7 @@ struct vdsbuffer fetch_slice_metadata(
     meta["x"] = json_axis(dims[0], vds_handle.layout());
     meta["y"] = json_axis(dims[1], vds_handle.layout());
 
-    auto str = meta.dump();
-    auto *data = new char[str.size()];
-    std::copy(str.begin(), str.end(), data);
-
-    vdsbuffer buffer{};
-    buffer.size = str.size();
-    buffer.data = data;
-
-    return buffer;
+    return internal::vdsbuffer_from_dump( meta.dump() );
 }
 
 struct vdsbuffer fetch_fence(
@@ -631,13 +630,7 @@ struct vdsbuffer fetch_fence(
         throw std::runtime_error(msg);
     }
 
-    vdsbuffer buffer{};
-    buffer.size = size;
-    buffer.data = data.get();
-
-    data.release();
-
-    return buffer;
+    return internal::vdsbuffer_from_requested_data(data, size);
 }
 
 struct vdsbuffer fetch_fence_metadata(
@@ -653,15 +646,7 @@ struct vdsbuffer fetch_fence_metadata(
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(0)});
     meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(0));
 
-    auto str = meta.dump();
-    auto *data = new char[str.size()];
-    std::copy(str.begin(), str.end(), data);
-
-    vdsbuffer buffer{};
-    buffer.size = str.size();
-    buffer.data = data;
-
-    return buffer;
+    return internal::vdsbuffer_from_dump( meta.dump() );
 }
 
 struct vdsbuffer metadata(
@@ -686,15 +671,7 @@ struct vdsbuffer metadata(
     for (int i = 2; i >= 0 ; i--) {
         meta["axis"].push_back(json_axis(i, vds_handle.layout()));
     }
-    auto str = meta.dump();
-    auto *data = new char[str.size()];
-    std::copy(str.begin(), str.end(), data);
-
-    vdsbuffer buffer{};
-    buffer.size = str.size();
-    buffer.data = data;
-
-    return buffer;
+    return internal::vdsbuffer_from_dump( meta.dump() );
 }
 
 struct vdsbuffer handle_error(
