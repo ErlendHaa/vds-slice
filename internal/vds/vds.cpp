@@ -139,16 +139,7 @@ namespace internal {
             }
 
     };
-}
 
-void vdsbuffer_delete(struct vdsbuffer* buf) {
-    if (!buf)
-        return;
-
-    delete[] buf->data;
-    delete[] buf->err;
-    *buf = vdsbuffer {};
-}
 
 int axis_todim(Axis ax) {
     switch (ax) {
@@ -365,12 +356,12 @@ int lineno_index_to_voxel(
 /*
  * Convert target dimension/axis + lineno to VDS voxel coordinates.
  */
-internal::VoxelBounds get_voxel_bounds(
+VoxelBounds get_voxel_bounds(
     Axis ax,
     int lineno,
-    const internal::VDSHandle& vds_handle
+    const VDSHandle& vds_handle
 ) {
-    internal::VoxelBounds voxel_bounds;
+    VoxelBounds voxel_bounds;
     for (std::size_t i = 0; i < 3; ++i)
         voxel_bounds.upper[i] = vds_handle.layout().GetDimensionNumSamples(i);
 
@@ -485,33 +476,33 @@ struct vdsbuffer fetch_slice(
     Axis ax,
     int lineno
 ) {
-    internal::VDSHandle vds_handle(url, credentials);
+    VDSHandle vds_handle(url, credentials);
 
     axis_validation(ax, vds_handle.layout());
 
-    internal::VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
+    VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
 
-    auto format = vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude);
+    auto format = vds_handle.layout().GetChannelFormat(VDSChannelID::amplitude);
     const int size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
         voxel_bounds.lower,
         voxel_bounds.upper,
         format,
         0,
-        internal::VDSChannelID::amplitude);
+        VDSChannelID::amplitude);
 
     std::unique_ptr< char[] > data(new char[size]());
     auto request = vds_handle.access_manager().RequestVolumeSubset(
         data.get(),
         size,
         OpenVDS::Dimensions_012,
-        internal::VDSLevelOfDetailID::level_0,
-        internal::VDSChannelID::amplitude,
+        VDSLevelOfDetailID::level_0,
+        VDSChannelID::amplitude,
         voxel_bounds.lower,
         voxel_bounds.upper,
         format
     );
 
-    return internal::finalize_request( request, "Failed to fetch slice from VDS", data, size );
+    return finalize_request( request, "Failed to fetch slice from VDS", data, size );
 }
 
 struct vdsbuffer fetch_slice_metadata(
@@ -519,7 +510,7 @@ struct vdsbuffer fetch_slice_metadata(
     std::string credentials,
     Axis ax
 ) {
-    internal::VDSHandle vds_handle(url, credentials);
+    VDSHandle vds_handle(url, credentials);
 
     axis_validation(ax, vds_handle.layout());
 
@@ -527,7 +518,7 @@ struct vdsbuffer fetch_slice_metadata(
     auto vdim = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
 
     nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
+    meta["format"] = vds_handle.get_channel_format_string(VDSChannelID::amplitude);
 
     /*
      * SEGYImport always writes annotation 'Sample' for axis K. We, on the
@@ -547,10 +538,10 @@ struct vdsbuffer fetch_slice_metadata(
         if (i == vdim) continue;
         dims.push_back(i);
     }
-    meta["x"] = json_axis(dims[0], vds_handle.layout());
-    meta["y"] = json_axis(dims[1], vds_handle.layout());
+    meta["x"] = internal::json_axis(dims[0], vds_handle.layout());
+    meta["y"] = internal::json_axis(dims[1], vds_handle.layout());
 
-    return internal::vdsbuffer_from_dump( meta.dump() );
+    return vdsbuffer_from_dump( meta.dump() );
 }
 
 struct vdsbuffer fetch_fence(
@@ -561,7 +552,7 @@ struct vdsbuffer fetch_fence(
     size_t npoints,
     enum InterpolationMethod interpolation_method
 ) {
-    internal::VDSHandle vds_handle(url, credentials);
+    VDSHandle vds_handle(url, credentials);
 
     const auto dimension_map =
             vds_handle.layout().GetVDSIJKGridDefinitionFromMetadata().dimensionMap;
@@ -629,15 +620,47 @@ struct vdsbuffer fetch_fence(
             (float*)data.get(),
             size,
             OpenVDS::Dimensions_012,
-            internal::VDSLevelOfDetailID::level_0,
-            internal::VDSChannelID::amplitude,
+            VDSLevelOfDetailID::level_0,
+            VDSChannelID::amplitude,
             coords.get(),
             npoints,
             to_interpolation(interpolation_method),
             0
     );
 
-    return internal::finalize_request( request, "Failed to fetch fence from VDS", data, size );
+    return finalize_request( request, "Failed to fetch fence from VDS", data, size );
+}
+
+struct vdsbuffer handle_error(
+    const std::exception& e
+) {
+    vdsbuffer buf {};
+    buf.err = new char[std::strlen(e.what()) + 1];
+    std::strcpy(buf.err, e.what());
+    return buf;
+}
+
+struct vdsbuffer metadata(
+    const std::string& url,
+    const std::string& credentials
+) {
+    internal::VDSHandle vds_handle(url, credentials);
+
+    nlohmann::json meta;
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
+
+    auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
+    meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
+
+    auto bbox = internal::BoundingBox(vds_handle.layout());
+    meta["boundingBox"]["ij"]   = bbox.index();
+    meta["boundingBox"]["cdp"]  = bbox.world();
+    meta["boundingBox"]["ilxl"] = bbox.annotation();
+
+    for (int i = 2; i >= 0 ; i--) {
+        meta["axis"].push_back(internal::json_axis(i, vds_handle.layout()));
+    }
+    return internal::vdsbuffer_from_dump( meta.dump() );
 }
 
 struct vdsbuffer fetch_fence_metadata(
@@ -654,37 +677,12 @@ struct vdsbuffer fetch_fence_metadata(
     return internal::vdsbuffer_from_dump( meta.dump() );
 }
 
-struct vdsbuffer metadata(
-    const std::string& url,
-    const std::string& credentials
-) {
-    internal::VDSHandle vds_handle(url, credentials);
+} // namespace internal
 
-    nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
+/*
+ * Below here the interface methods are defined.
+ */
 
-    auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
-    meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
-
-    auto bbox = BoundingBox(vds_handle.layout());
-    meta["boundingBox"]["ij"]   = bbox.index();
-    meta["boundingBox"]["cdp"]  = bbox.world();
-    meta["boundingBox"]["ilxl"] = bbox.annotation();
-
-    for (int i = 2; i >= 0 ; i--) {
-        meta["axis"].push_back(json_axis(i, vds_handle.layout()));
-    }
-    return internal::vdsbuffer_from_dump( meta.dump() );
-}
-
-struct vdsbuffer handle_error(
-    const std::exception& e
-) {
-    vdsbuffer buf {};
-    buf.err = new char[std::strlen(e.what()) + 1];
-    std::strcpy(buf.err, e.what());
-    return buf;
-}
 
 struct vdsbuffer slice(
     const char* vds,
@@ -696,9 +694,9 @@ struct vdsbuffer slice(
     std::string cred(credentials);
 
     try {
-        return fetch_slice(cube, cred, ax, lineno);
+        return internal::fetch_slice(cube, cred, ax, lineno);
     } catch (const std::exception& e) {
-        return handle_error(e);
+        return internal::handle_error(e);
     }
 }
 
@@ -711,9 +709,9 @@ struct vdsbuffer slice_metadata(
     std::string cred(credentials);
 
     try {
-        return fetch_slice_metadata(cube, cred, ax);
+        return internal::fetch_slice_metadata(cube, cred, ax);
     } catch (const std::exception& e) {
-        return handle_error(e);
+        return internal::handle_error(e);
     }
 }
 
@@ -729,11 +727,11 @@ struct vdsbuffer fence(
     std::string cred(credentials);
 
     try {
-        return fetch_fence(
+        return internal::fetch_fence(
             cube, cred, coordinate_system, coordinates, npoints,
             interpolation_method);
     } catch (const std::exception& e) {
-        return handle_error(e);
+        return internal::handle_error(e);
     }
 }
 
@@ -746,9 +744,9 @@ struct vdsbuffer fence_metadata(
     std::string cred(credentials);
 
     try {
-        return fetch_fence_metadata(cube, cred, npoints);
+        return internal::fetch_fence_metadata(cube, cred, npoints);
     } catch (const std::exception& e) {
-        return handle_error(e);
+        return internal::handle_error(e);
     }
 }
 
@@ -759,8 +757,17 @@ struct vdsbuffer metadata(
     try {
         std::string cube(vds);
         std::string cred(credentials);
-        return metadata(cube, cred);
+        return internal::metadata(cube, cred);
     } catch (const std::exception& e) {
-        return handle_error(e);
+        return internal::handle_error(e);
     }
+}
+
+void vdsbuffer_delete(struct vdsbuffer* buf) {
+    if (!buf)
+        return;
+
+    delete[] buf->data;
+    delete[] buf->err;
+    *buf = vdsbuffer {};
 }
