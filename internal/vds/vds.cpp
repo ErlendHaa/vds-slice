@@ -49,6 +49,20 @@ namespace internal {
         return tmp;
     }
 
+    template<typename REQUEST_TYPE>
+    vdsbuffer finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
+                                const std::string message,
+                                std::unique_ptr< char[] >& data,
+                                const std::size_t size ) {
+
+        const bool success = request.get()->WaitForCompletion();
+        if( not success ) {
+            throw std::runtime_error(message);
+        }
+
+        return internal::vdsbuffer_from_requested_data( data, size );
+    }
+
     class VDSHandle {
 
         private:
@@ -497,13 +511,7 @@ struct vdsbuffer fetch_slice(
         format
     );
 
-    bool success = request.get()->WaitForCompletion();
-    if(!success) {
-        const auto msg = "Failed to fetch fence from VDS";
-        throw std::runtime_error(msg);
-    }
-
-    return internal::vdsbuffer_from_requested_data(data, size);
+    return internal::finalize_request( request, "Failed to fetch slice from VDS", data, size );
 }
 
 struct vdsbuffer fetch_slice_metadata(
@@ -628,13 +636,8 @@ struct vdsbuffer fetch_fence(
             to_interpolation(interpolation_method),
             0
     );
-    bool success = request.get()->WaitForCompletion();
-    if(!success) {
-        const auto msg = "Failed to fetch fence from VDS";
-        throw std::runtime_error(msg);
-    }
 
-    return internal::vdsbuffer_from_requested_data(data, size);
+    return internal::finalize_request( request, "Failed to fetch fence from VDS", data, size );
 }
 
 struct vdsbuffer fetch_fence_metadata(
