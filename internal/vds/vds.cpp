@@ -53,6 +53,15 @@ namespace internal {
             const OpenVDS::VolumeDataLayout *layout_;
             const std::string seismic_channel_name_{"Amplitude"};
 
+            void validate_dimension() {
+                if (layout_->GetDimensionality() != 3) {
+                    throw std::runtime_error(
+                        "Unsupported VDS, expected 3 dimensions, got " +
+                        std::to_string(layout_->GetDimensionality())
+                    );
+                }
+            }
+
         public:
 
             VDSHandle( std::string url, std::string credentials) {
@@ -65,6 +74,8 @@ namespace internal {
 
                 if (this->layout_ == nullptr)
                     throw std::runtime_error("VDS does not contain valid data layout");
+
+                validate_dimension();
             }
 
             OpenVDS::VolumeDataAccessManager& access_manager() {
@@ -286,15 +297,6 @@ void axis_validation(Axis ax, const OpenVDS::VolumeDataLayout &layout) {
     }
 }
 
-void dimension_validation(const OpenVDS::VolumeDataLayout &layout) {
-    if (layout.GetDimensionality() != 3) {
-        throw std::runtime_error(
-            "Unsupported VDS, expected 3 dimensions, got " +
-            std::to_string(layout.GetDimensionality())
-        );
-    }
-}
-
 int lineno_annotation_to_voxel(
     int lineno,
     int vdim,
@@ -474,7 +476,6 @@ struct vdsbuffer fetch_slice(
 ) {
     internal::VDSHandle vds_handle(url, credentials);
 
-    dimension_validation(vds_handle.layout());
     axis_validation(ax, vds_handle.layout());
 
     int vmin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
@@ -518,7 +519,6 @@ struct vdsbuffer fetch_slice_metadata(
 ) {
     internal::VDSHandle vds_handle(url, credentials);
 
-    dimension_validation(vds_handle.layout());
     axis_validation(ax, vds_handle.layout());
 
     auto dimension = axis_todim(ax);
@@ -560,8 +560,6 @@ struct vdsbuffer fetch_fence(
     enum InterpolationMethod interpolation_method
 ) {
     internal::VDSHandle vds_handle(url, credentials);
-
-    dimension_validation(vds_handle.layout());
 
     const auto dimension_map =
             vds_handle.layout().GetVDSIJKGridDefinitionFromMetadata().dimensionMap;
@@ -652,8 +650,6 @@ struct vdsbuffer fetch_fence_metadata(
 ) {
     internal::VDSHandle vds_handle(url, credentials);
 
-    dimension_validation(vds_handle.layout());
-
     nlohmann::json meta;
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(0)});
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
@@ -666,8 +662,6 @@ struct vdsbuffer metadata(
     const std::string& credentials
 ) {
     internal::VDSHandle vds_handle(url, credentials);
-
-    dimension_validation(vds_handle.layout());
 
     nlohmann::json meta;
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
