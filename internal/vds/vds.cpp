@@ -22,6 +22,16 @@ using namespace std;
 
 namespace internal {
 
+    enum VDSChannelID {
+        amplitude = 0,
+        trace = 1,
+        segy_trace_header = 2
+    };
+
+    enum VDSLevelOfDetailID {
+        level_0 = 0
+    };
+
     vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
         vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
         std::copy(dump.begin(), dump.end(), tmp.data);
@@ -41,6 +51,7 @@ namespace internal {
             OpenVDS::Error error_;
             OpenVDS::VolumeDataAccessManager access_manager_;
             const OpenVDS::VolumeDataLayout *layout_;
+            const std::string seismic_channel_name_{"Amplitude"};
 
         public:
 
@@ -479,18 +490,23 @@ struct vdsbuffer fetch_slice(
     auto dimension = axis_todim(ax);
     set_voxels(ax, dimension, lineno, vds_handle.layout(), vmin, vmax);
 
-    auto format = vds_handle.layout().GetChannelFormat(0);
-    auto size = vds_handle.access_manager().GetVolumeSubsetBufferSize(vmin, vmax, format, 0, 0);
+    auto format = vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude);
+    auto size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
+        vmin,
+        vmax,
+        format,
+        0,
+        internal::VDSChannelID::amplitude);
 
     std::unique_ptr< char[] > data(new char[size]());
     auto request = vds_handle.access_manager().RequestVolumeSubset(
         data.get(),
         size,
         OpenVDS::Dimensions_012,
-        0,
-        0,
+        internal::VDSLevelOfDetailID::level_0,
+        internal::VDSChannelID::amplitude,
         vmin,
-        vmax,
+       vmax,
         format
     );
 
@@ -517,7 +533,7 @@ struct vdsbuffer fetch_slice_metadata(
     auto vdim = dim_tovoxel(dimension);
 
     nlohmann::json meta;
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(0));
+    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
 
     /*
      * SEGYImport always writes annotation 'Sample' for axis K. We, on the
@@ -621,7 +637,9 @@ struct vdsbuffer fetch_fence(
     auto request = vds_handle.access_manager().RequestVolumeTraces(
             (float*)data.get(),
             size,
-            OpenVDS::Dimensions_012, 0, 0,
+            OpenVDS::Dimensions_012,
+            internal::VDSLevelOfDetailID::level_0,
+            internal::VDSChannelID::amplitude,
             coords.get(),
             npoints,
             to_interpolation(interpolation_method),
@@ -647,7 +665,7 @@ struct vdsbuffer fetch_fence_metadata(
 
     nlohmann::json meta;
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(0)});
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(0));
+    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
 
     return internal::vdsbuffer_from_dump( meta.dump() );
 }
@@ -661,7 +679,7 @@ struct vdsbuffer metadata(
     dimension_validation(vds_handle.layout());
 
     nlohmann::json meta;
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(0));
+    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
 
     auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
     meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
