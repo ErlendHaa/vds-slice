@@ -75,6 +75,19 @@ namespace internal {
                 return *this->layout_;
             }
 
+            std::string get_channel_format_string( VDSChannelID id ) {
+                using namespace OpenVDS;
+                VolumeDataFormat format = layout_->GetChannelFormat(id);
+                switch (format) {
+                    case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
+                    case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
+                    case OpenVDS::VolumeDataFormat::Format_R32: return "<f4";
+                    default: {
+                        throw std::runtime_error("unsupported VDS format type");
+                    }
+                }
+            }
+
     };
 }
 
@@ -150,17 +163,6 @@ OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation)
         case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
         default: {
             throw std::runtime_error("Unhandled interpolation method");
-        }
-    }
-}
-
-std::string vdsformat_tostring(OpenVDS::VolumeDataFormat format) {
-    switch (format) {
-        case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
-        case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
-        case OpenVDS::VolumeDataFormat::Format_R32: return "<f4";
-        default: {
-            throw std::runtime_error("unsupported VDS format type");
         }
     }
 }
@@ -533,7 +535,7 @@ struct vdsbuffer fetch_slice_metadata(
     auto vdim = dim_tovoxel(dimension);
 
     nlohmann::json meta;
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
 
     /*
      * SEGYImport always writes annotation 'Sample' for axis K. We, on the
@@ -665,7 +667,7 @@ struct vdsbuffer fetch_fence_metadata(
 
     nlohmann::json meta;
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(0)});
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
 
     return internal::vdsbuffer_from_dump( meta.dump() );
 }
@@ -679,7 +681,7 @@ struct vdsbuffer metadata(
     dimension_validation(vds_handle.layout());
 
     nlohmann::json meta;
-    meta["format"] = vdsformat_tostring(vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude));
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
 
     auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
     meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
