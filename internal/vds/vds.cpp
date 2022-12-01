@@ -22,6 +22,11 @@ using namespace std;
 
 namespace internal {
 
+    struct VoxelBounds {
+        int lower[OpenVDS::VolumeDataLayout::Dimensionality_Max]{0, 0, 0, 0, 0, 0};
+        int upper[OpenVDS::VolumeDataLayout::Dimensionality_Max]{1, 1, 1, 1, 1, 1};
+    };
+
     enum VDSChannelID {
         amplitude = 0,
         trace = 1,
@@ -346,24 +351,20 @@ int lineno_index_to_voxel(
 /*
  * Convert target dimension/axis + lineno to VDS voxel coordinates.
  */
-void set_voxels(
+internal::VoxelBounds get_voxel_bounds(
     Axis ax,
-    int dimension,
     int lineno,
-    const internal::VDSHandle& vds_handle,
-    int (&voxelmin)[OpenVDS::VolumeDataLayout::Dimensionality_Max],
-    int (&voxelmax)[OpenVDS::VolumeDataLayout::Dimensionality_Max]
+    const internal::VDSHandle& vds_handle
 ) {
-    auto vmin = OpenVDS::IntVector3 { 0, 0, 0 };
-    auto vmax = OpenVDS::IntVector3 {
-        vds_handle.layout().GetDimensionNumSamples(0),
-        vds_handle.layout().GetDimensionNumSamples(1),
-        vds_handle.layout().GetDimensionNumSamples(2)
-    };
+    internal::VoxelBounds voxel_bounds;
+    for (std::size_t i = 0; i < 3; ++i)
+        voxel_bounds.upper[i] = vds_handle.layout().GetDimensionNumSamples(i);
 
     int voxelline;
+    const int dimension = axis_todim(ax);
     auto vdim   = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
-    auto system = axis_tosystem(ax);
+
+    const int system = axis_tosystem(ax);
     switch (system) {
         case ANNOTATION: {
             auto transformer = OpenVDS::IJKCoordinateTransformer(&vds_handle.layout());
@@ -385,14 +386,10 @@ void set_voxels(
         }
     }
 
-    vmin[vdim] = voxelline;
-    vmax[vdim] = voxelline + 1;
+    voxel_bounds.lower[vdim] = voxelline;
+    voxel_bounds.upper[vdim] = voxelline + 1;
 
-    /* Commit */
-    for (int i = 0; i < 3; i++) {
-        voxelmin[i] = vmin[i];
-        voxelmax[i] = vmax[i];
-    }
+    return voxel_bounds;
 }
 
 
@@ -478,15 +475,12 @@ struct vdsbuffer fetch_slice(
 
     axis_validation(ax, vds_handle.layout());
 
-    int vmin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
-    int vmax[OpenVDS::Dimensionality_Max] = { 1, 1, 1, 1, 1, 1};
-    auto dimension = axis_todim(ax);
-    set_voxels(ax, dimension, lineno, vds_handle, vmin, vmax);
+    internal::VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
 
     auto format = vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude);
-    auto size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
-        vmin,
-        vmax,
+    const int size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
+        voxel_bounds.lower,
+        voxel_bounds.upper,
         format,
         0,
         internal::VDSChannelID::amplitude);
@@ -498,8 +492,8 @@ struct vdsbuffer fetch_slice(
         OpenVDS::Dimensions_012,
         internal::VDSLevelOfDetailID::level_0,
         internal::VDSChannelID::amplitude,
-        vmin,
-       vmax,
+        voxel_bounds.lower,
+        voxel_bounds.upper,
         format
     );
 
