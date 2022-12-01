@@ -70,6 +70,8 @@ namespace internal {
             OpenVDS::Error error_;
             OpenVDS::VolumeDataAccessManager access_manager_;
             const OpenVDS::VolumeDataLayout *layout_;
+            OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
+
             const std::string seismic_channel_name_{"Amplitude"};
 
             void validate_dimension() {
@@ -94,6 +96,8 @@ namespace internal {
                 if (this->layout_ == nullptr)
                     throw std::runtime_error("VDS does not contain valid data layout");
 
+                this->ijk_coordinate_transformer_ = OpenVDS::IJKCoordinateTransformer(this->layout_);
+
                 validate_dimension();
             }
 
@@ -103,6 +107,10 @@ namespace internal {
 
             const OpenVDS::VolumeDataLayout &layout() const {
                 return *this->layout_;
+            }
+
+            const OpenVDS::IJKCoordinateTransformer &ijk_coordinate_transformer() const {
+                return this->ijk_coordinate_transformer_;
             }
 
             std::string get_channel_format_string( VDSChannelID id ) {
@@ -119,8 +127,7 @@ namespace internal {
             }
 
             int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
-                const OpenVDS::IJKCoordinateTransformer transformer(layout_);
-                const OpenVDS::IntVector3& mapping = transformer.IJKToVoxelDimensionMap();
+                const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
                 if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
                     return mapping[ijk_axis_id];
                 }
@@ -372,8 +379,7 @@ VoxelBounds get_voxel_bounds(
     const int system = axis_tosystem(ax);
     switch (system) {
         case ANNOTATION: {
-            auto transformer = OpenVDS::IJKCoordinateTransformer(&vds_handle.layout());
-            if (not transformer.AnnotationsDefined()) {
+            if (not vds_handle.ijk_coordinate_transformer().AnnotationsDefined()) {
                 throw std::runtime_error("VDS doesn't define annotations");
             }
             voxelline = lineno_annotation_to_voxel(lineno, vdim, vds_handle.layout());
@@ -561,15 +567,14 @@ struct vdsbuffer fetch_fence(
         new float[npoints][OpenVDS::Dimensionality_Max]{{0}}
     );
 
-    auto coordinate_transformer = OpenVDS::IJKCoordinateTransformer(&vds_handle.layout());
     auto transform_coordinate = [&] (const float x, const float y) {
         switch (coordinate_system) {
             case INDEX:
                 return OpenVDS::Vector<double, 3> {x, y, 0};
             case ANNOTATION:
-                return coordinate_transformer.AnnotationToIJKPosition({x, y, 0});
+                return vds_handle.ijk_coordinate_transformer().AnnotationToIJKPosition({x, y, 0});
             case CDP:
-                return coordinate_transformer.WorldToIJKPosition({x, y, 0});
+                return vds_handle.ijk_coordinate_transformer().WorldToIJKPosition({x, y, 0});
             default: {
                 throw std::runtime_error("Unhandled coordinate system");
             }
