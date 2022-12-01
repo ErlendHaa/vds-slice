@@ -88,6 +88,26 @@ namespace internal {
                 }
             }
 
+            int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
+                const OpenVDS::IJKCoordinateTransformer transformer(layout_);
+                const OpenVDS::IntVector3& mapping = transformer.IJKToVoxelDimensionMap();
+                if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
+                    return mapping[ijk_axis_id];
+                }
+                else {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+
+            int convert_voxel_to_ijk_axis_id( const int voxel_axis_id ) const {
+                return convert_ijk_to_voxel_axis_id( voxel_axis_id );
+            }
+
+            int get_max_voxel_index( const int voxel_dimension ) const {
+                const int world_axis_id = convert_voxel_to_ijk_axis_id(voxel_dimension);
+                return layout_->GetDimensionNumSamples(world_axis_id);
+            }
+
     };
 }
 
@@ -275,36 +295,6 @@ void dimension_validation(const OpenVDS::VolumeDataLayout &layout) {
     }
 }
 
-int dim_tovoxel(int dimension) {
-    /*
-     * For now assume that the axis order is always depth/time/sample,
-     * crossline, inline. This should be checked elsewhere.
-     */
-    switch (dimension) {
-        case 0: return 2;
-        case 1: return 1;
-        case 2: return 0;
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
-int voxel_todim(int voxel) {
-    /*
-     * For now assume that the axis order is always depth/time/sample,
-     * crossline, inline. This should be checked elsewhere.
-     */
-    switch (voxel) {
-        case 0: return 2;
-        case 1: return 1;
-        case 2: return 0;
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
 int lineno_annotation_to_voxel(
     int lineno,
     int vdim,
@@ -358,31 +348,31 @@ void set_voxels(
     Axis ax,
     int dimension,
     int lineno,
-    const OpenVDS::VolumeDataLayout &layout,
+    const internal::VDSHandle& vds_handle,
     int (&voxelmin)[OpenVDS::VolumeDataLayout::Dimensionality_Max],
     int (&voxelmax)[OpenVDS::VolumeDataLayout::Dimensionality_Max]
 ) {
     auto vmin = OpenVDS::IntVector3 { 0, 0, 0 };
     auto vmax = OpenVDS::IntVector3 {
-        layout.GetDimensionNumSamples(0),
-        layout.GetDimensionNumSamples(1),
-        layout.GetDimensionNumSamples(2)
+        vds_handle.layout().GetDimensionNumSamples(0),
+        vds_handle.layout().GetDimensionNumSamples(1),
+        vds_handle.layout().GetDimensionNumSamples(2)
     };
 
     int voxelline;
-    auto vdim   = dim_tovoxel(dimension);
+    auto vdim   = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
     auto system = axis_tosystem(ax);
     switch (system) {
         case ANNOTATION: {
-            auto transformer = OpenVDS::IJKCoordinateTransformer(&layout);
+            auto transformer = OpenVDS::IJKCoordinateTransformer(&vds_handle.layout());
             if (not transformer.AnnotationsDefined()) {
                 throw std::runtime_error("VDS doesn't define annotations");
             }
-            voxelline = lineno_annotation_to_voxel(lineno, vdim, layout);
+            voxelline = lineno_annotation_to_voxel(lineno, vdim, vds_handle.layout());
             break;
         }
         case INDEX: {
-            voxelline = lineno_index_to_voxel(lineno, vdim, layout);
+            voxelline = lineno_index_to_voxel(lineno, vdim, vds_handle.layout());
             break;
         }
         case CDP: {
@@ -490,7 +480,7 @@ struct vdsbuffer fetch_slice(
     int vmin[OpenVDS::Dimensionality_Max] = { 0, 0, 0, 0, 0, 0};
     int vmax[OpenVDS::Dimensionality_Max] = { 1, 1, 1, 1, 1, 1};
     auto dimension = axis_todim(ax);
-    set_voxels(ax, dimension, lineno, vds_handle.layout(), vmin, vmax);
+    set_voxels(ax, dimension, lineno, vds_handle, vmin, vmax);
 
     auto format = vds_handle.layout().GetChannelFormat(internal::VDSChannelID::amplitude);
     auto size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
@@ -532,7 +522,7 @@ struct vdsbuffer fetch_slice_metadata(
     axis_validation(ax, vds_handle.layout());
 
     auto dimension = axis_todim(ax);
-    auto vdim = dim_tovoxel(dimension);
+    auto vdim = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
 
     nlohmann::json meta;
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
@@ -603,8 +593,7 @@ struct vdsbuffer fetch_fence(
 
         auto validate_boundary = [&] (const int voxel) {
             const auto min = -0.5;
-            const auto max = vds_handle.layout().GetDimensionNumSamples(voxel_todim(voxel))
-                            - 0.5;
+            const auto max = vds_handle.get_max_voxel_index( voxel ) - 0.5;
             if(coordinate[voxel] < min || coordinate[voxel] >= max) {
                 const std::string coordinate_str =
                     "(" +std::to_string(x) + "," + std::to_string(y) + ")";
