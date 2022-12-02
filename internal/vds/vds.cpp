@@ -28,13 +28,13 @@ struct VoxelBounds {
 };
 
 enum VDSChannelID {
-    amplitude = 0,
-    trace = 1,
-    segy_trace_header = 2
+    Amplitude = 0,
+    Trace = 1,
+    SegyTraceHeader = 2
 };
 
 enum VDSLevelOfDetailID {
-    level_0 = 0
+    Level0 = 0
 };
 
 enum VDSAxisID {
@@ -43,6 +43,74 @@ enum VDSAxisID {
     Inline=2,
 };
 
+struct AxisUnitCombination {
+    const char* label;
+    const std::vector<const char*> units;
+
+    AxisUnitCombination( const char* l, const std::vector<const char*> vu) : label(l), units(std::move(vu))
+    {}
+};
+
+class ValidZAxisCombinations {
+
+    private:
+        enum Index{
+            depth=0,
+            time=1,
+            sample=2
+        };
+
+        static const std::array<AxisUnitCombination, 3 > label_unit_combinations_;
+        static const std::array<const char*, 3> axis_labels_;
+
+    public:
+        static const std::array<const char*, 3>& axis_labels(){
+            return axis_labels_;
+        }
+
+        static const std::vector<const char*>& depth_units() {
+            return label_unit_combinations_[Index::depth].units;
+        }
+
+        static const std::vector<const char*>& time_units() {
+            return label_unit_combinations_[Index::time].units;
+        }
+
+        static const std::vector<const char*>& sample_units() {
+            return label_unit_combinations_[Index::sample].units;
+        }
+};
+
+/* Define some convenient lookup tables for labels and units */
+const std::array<AxisUnitCombination, 3 > ValidZAxisCombinations::label_unit_combinations_ {
+    AxisUnitCombination(
+        OpenVDS::KnownAxisNames::Depth(),
+        std::vector<const char*>{
+            OpenVDS::KnownUnitNames::Meter(),
+            OpenVDS::KnownUnitNames::Foot(),
+            OpenVDS::KnownUnitNames::USSurveyFoot()
+        }
+    ),
+    AxisUnitCombination(
+        OpenVDS::KnownAxisNames::Time(),
+        std::vector<const char*>{
+            OpenVDS::KnownUnitNames::Millisecond(),
+            OpenVDS::KnownUnitNames::Second()
+        }
+    ),
+    AxisUnitCombination(
+        OpenVDS::KnownAxisNames::Sample(),
+        std::vector<const char*>{
+            OpenVDS::KnownUnitNames::Unitless()
+        }
+    )
+};
+
+const std::array<const char*, 3> ValidZAxisCombinations::axis_labels_ {
+    label_unit_combinations_[Index::depth].label,
+    label_unit_combinations_[Index::time].label,
+    label_unit_combinations_[Index::sample].label,
+};
 
 vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
     vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
@@ -230,21 +298,6 @@ OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation)
  * "Seconds" or "Milliseconds"
  */
 bool unit_validation(Axis ax, const char* zunit) {
-    /* Define some convenient lookup tables for units */
-    static const std::array< const char*, 3 > depthunits = {
-        OpenVDS::KnownUnitNames::Meter(),
-        OpenVDS::KnownUnitNames::Foot(),
-        OpenVDS::KnownUnitNames::USSurveyFoot()
-    };
-
-    static const std::array< const char*, 2 > timeunits = {
-        OpenVDS::KnownUnitNames::Millisecond(),
-        OpenVDS::KnownUnitNames::Second()
-    };
-
-    static const std::array< const char*, 1 > sampleunits = {
-        OpenVDS::KnownUnitNames::Unitless(),
-    };
 
     auto isoneof = [zunit](const char* x) {
         return !std::strcmp(x, zunit);
@@ -258,11 +311,11 @@ bool unit_validation(Axis ax, const char* zunit) {
         case CROSSLINE:
             return true;
         case DEPTH:
-            return std::any_of(depthunits.begin(), depthunits.end(), isoneof);
+            return std::any_of(ValidZAxisCombinations::depth_units().begin(), ValidZAxisCombinations::depth_units().end(), isoneof);
         case TIME:
-            return std::any_of(timeunits.begin(), timeunits.end(), isoneof);
+            return std::any_of(ValidZAxisCombinations::time_units().begin(), ValidZAxisCombinations::time_units().end(), isoneof);
         case SAMPLE:
-            return std::any_of(sampleunits.begin(), sampleunits.end(), isoneof);
+            return std::any_of(ValidZAxisCombinations::sample_units().begin(), ValidZAxisCombinations::sample_units().end(), isoneof);
         default: {
             throw std::runtime_error("Unhandled axis");
         }
@@ -290,18 +343,11 @@ bool axis_order_validation(const OpenVDS::VolumeDataLayout &layout) {
 
     auto z = layout.GetDimensionName(VDSAxisID::DepthSampleTime);
 
-    /* Define some convenient lookup tables for units */
-    static const std::array< const char*, 3 > depth = {
-        OpenVDS::KnownAxisNames::Depth(),
-        OpenVDS::KnownAxisNames::Time(),
-        OpenVDS::KnownAxisNames::Sample()
-    };
-
     auto isoneof = [z](const char* x) {
         return !std::strcmp(x, z);
     };
 
-    return std::any_of(depth.begin(), depth.end(), isoneof);
+    return std::any_of(ValidZAxisCombinations::axis_labels().begin(), ValidZAxisCombinations::axis_labels().end(), isoneof);
 }
 
 
@@ -493,21 +539,21 @@ struct vdsbuffer fetch_slice(
 
     VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
 
-    auto format = vds_handle.layout().GetChannelFormat(VDSChannelID::amplitude);
+    auto format = vds_handle.layout().GetChannelFormat(VDSChannelID::Amplitude);
     const int size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
         voxel_bounds.lower,
         voxel_bounds.upper,
         format,
-        VDSLevelOfDetailID::level_0,
-        VDSChannelID::amplitude);
+        VDSLevelOfDetailID::Level0,
+        VDSChannelID::Amplitude);
 
     std::unique_ptr< char[] > data(new char[size]());
     auto request = vds_handle.access_manager().RequestVolumeSubset(
         data.get(),
         size,
         OpenVDS::Dimensions_012,
-        VDSLevelOfDetailID::level_0,
-        VDSChannelID::amplitude,
+        VDSLevelOfDetailID::Level0,
+        VDSChannelID::Amplitude,
         voxel_bounds.lower,
         voxel_bounds.upper,
         format
@@ -529,7 +575,7 @@ struct vdsbuffer fetch_slice_metadata(
     auto vdim = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
 
     nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(VDSChannelID::amplitude);
+    meta["format"] = vds_handle.get_channel_format_string(VDSChannelID::Amplitude);
 
     /*
      * SEGYImport always writes annotation 'Sample' for axis K. We, on the
@@ -622,7 +668,7 @@ struct vdsbuffer fetch_fence(
     }
 
     // TODO: Verify that trace dimension is always 0
-    auto size = vds_handle.access_manager().GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::level_0);
+    auto size = vds_handle.access_manager().GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::Level0);
 
     std::unique_ptr< char[] > data(new char[size]());
 
@@ -630,8 +676,8 @@ struct vdsbuffer fetch_fence(
             (float*)data.get(),
             size,
             OpenVDS::Dimensions_012,
-            VDSLevelOfDetailID::level_0,
-            VDSChannelID::amplitude,
+            VDSLevelOfDetailID::Level0,
+            VDSChannelID::Amplitude,
             coords.get(),
             npoints,
             to_interpolation(interpolation_method),
@@ -657,7 +703,7 @@ struct vdsbuffer metadata(
     internal::VDSHandle vds_handle(url, credentials);
 
     nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
 
     auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
     meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
@@ -682,7 +728,7 @@ struct vdsbuffer fetch_fence_metadata(
 
     nlohmann::json meta;
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
+    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
 
     return internal::vdsbuffer_from_dump( meta.dump() );
 }
