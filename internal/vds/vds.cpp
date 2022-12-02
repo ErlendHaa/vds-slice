@@ -112,20 +112,20 @@ const std::array<const char*, 3> ValidZAxisCombinations::axis_labels_ {
     label_unit_combinations_[Index::sample].label,
 };
 
-vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
-    vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
+requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
+    requestdata tmp{ new char[dump.size()], nullptr, dump.size() };
     std::copy(dump.begin(), dump.end(), tmp.data);
     return tmp;
 }
 
-vdsbuffer vdsbuffer_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
-    vdsbuffer tmp{ data.get(), nullptr, size };
+requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
+    requestdata tmp{ data.get(), nullptr, size };
     data.release();
     return tmp;
 }
 
 template<typename REQUEST_TYPE>
-vdsbuffer finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
+requestdata finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
                             const std::string message,
                             std::unique_ptr< char[] >& data,
                             const std::size_t size ) {
@@ -135,7 +135,7 @@ vdsbuffer finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
         throw std::runtime_error(message);
     }
 
-    return internal::vdsbuffer_from_requested_data( data, size );
+    return internal::requestdata_from_requested_data( data, size );
 }
 
 class VDSHandle {
@@ -527,7 +527,7 @@ nlohmann::json json_axis(
     return doc;
 }
 
-struct vdsbuffer fetch_slice(
+struct requestdata fetch_slice(
     std::string url,
     std::string credentials,
     Axis ax,
@@ -562,7 +562,7 @@ struct vdsbuffer fetch_slice(
     return finalize_request( request, "Failed to fetch slice from VDS", data, size );
 }
 
-struct vdsbuffer fetch_slice_metadata(
+struct requestdata fetch_slice_metadata(
     std::string url,
     std::string credentials,
     Axis ax
@@ -598,10 +598,10 @@ struct vdsbuffer fetch_slice_metadata(
     meta["x"] = internal::json_axis(dims[0], vds_handle.layout());
     meta["y"] = internal::json_axis(dims[1], vds_handle.layout());
 
-    return vdsbuffer_from_dump( meta.dump() );
+    return requestdata_from_dump( meta.dump() );
 }
 
-struct vdsbuffer fetch_fence(
+struct requestdata fetch_fence(
     const std::string& url,
     const std::string& credentials,
     enum CoordinateSystem coordinate_system,
@@ -687,16 +687,16 @@ struct vdsbuffer fetch_fence(
     return finalize_request( request, "Failed to fetch fence from VDS", data, size );
 }
 
-struct vdsbuffer handle_error(
+struct requestdata handle_error(
     const std::exception& e
 ) {
-    vdsbuffer buf {};
+    requestdata buf {};
     buf.err = new char[std::strlen(e.what()) + 1];
     std::strcpy(buf.err, e.what());
     return buf;
 }
 
-struct vdsbuffer metadata(
+struct requestdata metadata(
     const std::string& url,
     const std::string& credentials
 ) {
@@ -716,10 +716,10 @@ struct vdsbuffer metadata(
     for (int i = 2; i >= 0 ; i--) {
         meta["axis"].push_back(internal::json_axis(i, vds_handle.layout()));
     }
-    return internal::vdsbuffer_from_dump( meta.dump() );
+    return internal::requestdata_from_dump( meta.dump() );
 }
 
-struct vdsbuffer fetch_fence_metadata(
+struct requestdata fetch_fence_metadata(
     std::string url,
     std::string credentials,
     size_t npoints
@@ -730,7 +730,7 @@ struct vdsbuffer fetch_fence_metadata(
     meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
 
-    return internal::vdsbuffer_from_dump( meta.dump() );
+    return internal::requestdata_from_dump( meta.dump() );
 }
 
 } // namespace internal
@@ -740,7 +740,7 @@ struct vdsbuffer fetch_fence_metadata(
  */
 
 
-struct vdsbuffer slice(
+struct requestdata slice(
     const char* vds,
     const char* credentials,
     int lineno,
@@ -756,7 +756,7 @@ struct vdsbuffer slice(
     }
 }
 
-struct vdsbuffer slice_metadata(
+struct requestdata slice_metadata(
     const char* vds,
     const char* credentials,
     Axis ax
@@ -771,7 +771,7 @@ struct vdsbuffer slice_metadata(
     }
 }
 
-struct vdsbuffer fence(
+struct requestdata fence(
     const char* vds,
     const char* credentials,
     enum CoordinateSystem coordinate_system,
@@ -791,7 +791,7 @@ struct vdsbuffer fence(
     }
 }
 
-struct vdsbuffer fence_metadata(
+struct requestdata fence_metadata(
     const char* vds,
     const char* credentials,
     size_t npoints
@@ -806,7 +806,7 @@ struct vdsbuffer fence_metadata(
     }
 }
 
-struct vdsbuffer metadata(
+struct requestdata metadata(
     const char* vds,
     const char* credentials
 ) {
@@ -819,11 +819,11 @@ struct vdsbuffer metadata(
     }
 }
 
-void vdsbuffer_delete(struct vdsbuffer* buf) {
+void requestdata_delete(struct requestdata* buf) {
     if (!buf)
         return;
 
     delete[] buf->data;
     delete[] buf->err;
-    *buf = vdsbuffer {};
+    *buf = requestdata {};
 }
