@@ -37,6 +37,13 @@ enum VDSLevelOfDetailID {
     level_0 = 0
 };
 
+enum VDSAxisID {
+    DepthSampleTime=0,
+    Crossline=1,
+    Inline=2,
+};
+
+
 vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
     vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
     std::copy(dump.begin(), dump.end(), tmp.data);
@@ -273,15 +280,15 @@ bool unit_validation(Axis ax, const char* zunit) {
  * This function will return 0 if that's not the case
  */
 bool axis_order_validation(const OpenVDS::VolumeDataLayout &layout) {
-    if (std::strcmp(layout.GetDimensionName(2), OpenVDS::KnownAxisNames::Inline())) {
+    if (std::strcmp(layout.GetDimensionName(VDSAxisID::Inline), OpenVDS::KnownAxisNames::Inline())) {
         return false;
     }
 
-    if (std::strcmp(layout.GetDimensionName(1), OpenVDS::KnownAxisNames::Crossline())) {
+    if (std::strcmp(layout.GetDimensionName(VDSAxisID::Crossline), OpenVDS::KnownAxisNames::Crossline())) {
         return false;
     }
 
-    auto z = layout.GetDimensionName(0);
+    auto z = layout.GetDimensionName(VDSAxisID::DepthSampleTime);
 
     /* Define some convenient lookup tables for units */
     static const std::array< const char*, 3 > depth = {
@@ -305,7 +312,7 @@ void axis_validation(Axis ax, const OpenVDS::VolumeDataLayout &layout) {
         throw std::runtime_error(msg);
     }
 
-    auto zaxis = layout.GetAxisDescriptor(0);
+    auto zaxis = layout.GetAxisDescriptor(VDSAxisID::DepthSampleTime);
     const char* zunit = zaxis.GetUnit();
     if (not unit_validation(ax, zunit)) {
         std::string msg = "Unable to use " + axis_tostring(ax);
@@ -421,8 +428,8 @@ private:
 
 
 std::vector< std::pair<int, int> > BoundingBox::index() noexcept (true) {
-    auto ils = layout.GetDimensionNumSamples(2) - 1;
-    auto xls = layout.GetDimensionNumSamples(1) - 1;
+    auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
+    auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
 
     return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
 }
@@ -491,7 +498,7 @@ struct vdsbuffer fetch_slice(
         voxel_bounds.lower,
         voxel_bounds.upper,
         format,
-        0,
+        VDSLevelOfDetailID::level_0,
         VDSChannelID::amplitude);
 
     std::unique_ptr< char[] > data(new char[size]());
@@ -615,7 +622,7 @@ struct vdsbuffer fetch_fence(
     }
 
     // TODO: Verify that trace dimension is always 0
-    auto size = vds_handle.access_manager().GetVolumeTracesBufferSize(npoints, 0);
+    auto size = vds_handle.access_manager().GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::level_0);
 
     std::unique_ptr< char[] > data(new char[size]());
 
@@ -674,7 +681,7 @@ struct vdsbuffer fetch_fence_metadata(
     internal::VDSHandle vds_handle(url, credentials);
 
     nlohmann::json meta;
-    meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(0)});
+    meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::amplitude);
 
     return internal::vdsbuffer_from_dump( meta.dump() );
