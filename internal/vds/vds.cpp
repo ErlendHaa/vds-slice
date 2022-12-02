@@ -22,130 +22,130 @@ using namespace std;
 
 namespace internal {
 
-    struct VoxelBounds {
-        int lower[OpenVDS::VolumeDataLayout::Dimensionality_Max]{0, 0, 0, 0, 0, 0};
-        int upper[OpenVDS::VolumeDataLayout::Dimensionality_Max]{1, 1, 1, 1, 1, 1};
-    };
+struct VoxelBounds {
+    int lower[OpenVDS::VolumeDataLayout::Dimensionality_Max]{0, 0, 0, 0, 0, 0};
+    int upper[OpenVDS::VolumeDataLayout::Dimensionality_Max]{1, 1, 1, 1, 1, 1};
+};
 
-    enum VDSChannelID {
-        amplitude = 0,
-        trace = 1,
-        segy_trace_header = 2
-    };
+enum VDSChannelID {
+    amplitude = 0,
+    trace = 1,
+    segy_trace_header = 2
+};
 
-    enum VDSLevelOfDetailID {
-        level_0 = 0
-    };
+enum VDSLevelOfDetailID {
+    level_0 = 0
+};
 
-    vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
-        vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
-        std::copy(dump.begin(), dump.end(), tmp.data);
-        return tmp;
+vdsbuffer vdsbuffer_from_dump( const nlohmann::json::string_t& dump ) {
+    vdsbuffer tmp{ new char[dump.size()], nullptr, dump.size() };
+    std::copy(dump.begin(), dump.end(), tmp.data);
+    return tmp;
+}
+
+vdsbuffer vdsbuffer_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
+    vdsbuffer tmp{ data.get(), nullptr, size };
+    data.release();
+    return tmp;
+}
+
+template<typename REQUEST_TYPE>
+vdsbuffer finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
+                            const std::string message,
+                            std::unique_ptr< char[] >& data,
+                            const std::size_t size ) {
+
+    const bool success = request.get()->WaitForCompletion();
+    if( not success ) {
+        throw std::runtime_error(message);
     }
 
-    vdsbuffer vdsbuffer_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
-        vdsbuffer tmp{ data.get(), nullptr, size };
-        data.release();
-        return tmp;
-    }
+    return internal::vdsbuffer_from_requested_data( data, size );
+}
 
-    template<typename REQUEST_TYPE>
-    vdsbuffer finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
-                                const std::string message,
-                                std::unique_ptr< char[] >& data,
-                                const std::size_t size ) {
+class VDSHandle {
 
-        const bool success = request.get()->WaitForCompletion();
-        if( not success ) {
-            throw std::runtime_error(message);
+    private:
+        OpenVDS::ScopedVDSHandle handle_;
+        OpenVDS::Error error_;
+        OpenVDS::VolumeDataAccessManager access_manager_;
+        const OpenVDS::VolumeDataLayout *layout_;
+        OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
+
+        const std::string seismic_channel_name_{"Amplitude"};
+
+        void validate_dimension() {
+            if (layout_->GetDimensionality() != 3) {
+                throw std::runtime_error(
+                    "Unsupported VDS, expected 3 dimensions, got " +
+                    std::to_string(layout_->GetDimensionality())
+                );
+            }
         }
 
-        return internal::vdsbuffer_from_requested_data( data, size );
-    }
+    public:
 
-    class VDSHandle {
+        VDSHandle( std::string url, std::string credentials) {
+            this->handle_ = OpenVDS::Open(url, credentials, this->error_);
+            if(this->error_.code != 0)
+                throw std::runtime_error("Could not open VDS: " + this->error_.string);
 
-        private:
-            OpenVDS::ScopedVDSHandle handle_;
-            OpenVDS::Error error_;
-            OpenVDS::VolumeDataAccessManager access_manager_;
-            const OpenVDS::VolumeDataLayout *layout_;
-            OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
+            this->access_manager_ = OpenVDS::GetAccessManager(handle_);
+            this->layout_ = access_manager_.GetVolumeDataLayout();
 
-            const std::string seismic_channel_name_{"Amplitude"};
+            if (this->layout_ == nullptr)
+                throw std::runtime_error("VDS does not contain valid data layout");
 
-            void validate_dimension() {
-                if (layout_->GetDimensionality() != 3) {
-                    throw std::runtime_error(
-                        "Unsupported VDS, expected 3 dimensions, got " +
-                        std::to_string(layout_->GetDimensionality())
-                    );
+            this->ijk_coordinate_transformer_ = OpenVDS::IJKCoordinateTransformer(this->layout_);
+
+            validate_dimension();
+        }
+
+        OpenVDS::VolumeDataAccessManager& access_manager() {
+            return this->access_manager_;
+        }
+
+        const OpenVDS::VolumeDataLayout &layout() const {
+            return *this->layout_;
+        }
+
+        const OpenVDS::IJKCoordinateTransformer &ijk_coordinate_transformer() const {
+            return this->ijk_coordinate_transformer_;
+        }
+
+        std::string get_channel_format_string( VDSChannelID id ) {
+            using namespace OpenVDS;
+            VolumeDataFormat format = layout_->GetChannelFormat(id);
+            switch (format) {
+                case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
+                case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
+                case OpenVDS::VolumeDataFormat::Format_R32: return "<f4";
+                default: {
+                    throw std::runtime_error("unsupported VDS format type");
                 }
             }
+        }
 
-        public:
-
-            VDSHandle( std::string url, std::string credentials) {
-                this->handle_ = OpenVDS::Open(url, credentials, this->error_);
-                if(this->error_.code != 0)
-                    throw std::runtime_error("Could not open VDS: " + this->error_.string);
-
-                this->access_manager_ = OpenVDS::GetAccessManager(handle_);
-                this->layout_ = access_manager_.GetVolumeDataLayout();
-
-                if (this->layout_ == nullptr)
-                    throw std::runtime_error("VDS does not contain valid data layout");
-
-                this->ijk_coordinate_transformer_ = OpenVDS::IJKCoordinateTransformer(this->layout_);
-
-                validate_dimension();
+        int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
+            const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
+            if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
+                return mapping[ijk_axis_id];
             }
-
-            OpenVDS::VolumeDataAccessManager& access_manager() {
-                return this->access_manager_;
+            else {
+                throw std::runtime_error("Unhandled axis");
             }
+        }
 
-            const OpenVDS::VolumeDataLayout &layout() const {
-                return *this->layout_;
-            }
+        int convert_voxel_to_ijk_axis_id( const int voxel_axis_id ) const {
+            return convert_ijk_to_voxel_axis_id( voxel_axis_id );
+        }
 
-            const OpenVDS::IJKCoordinateTransformer &ijk_coordinate_transformer() const {
-                return this->ijk_coordinate_transformer_;
-            }
+        int get_max_voxel_index( const int voxel_dimension ) const {
+            const int world_axis_id = convert_voxel_to_ijk_axis_id(voxel_dimension);
+            return layout_->GetDimensionNumSamples(world_axis_id);
+        }
 
-            std::string get_channel_format_string( VDSChannelID id ) {
-                using namespace OpenVDS;
-                VolumeDataFormat format = layout_->GetChannelFormat(id);
-                switch (format) {
-                    case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
-                    case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
-                    case OpenVDS::VolumeDataFormat::Format_R32: return "<f4";
-                    default: {
-                        throw std::runtime_error("unsupported VDS format type");
-                    }
-                }
-            }
-
-            int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
-                const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
-                if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
-                    return mapping[ijk_axis_id];
-                }
-                else {
-                    throw std::runtime_error("Unhandled axis");
-                }
-            }
-
-            int convert_voxel_to_ijk_axis_id( const int voxel_axis_id ) const {
-                return convert_ijk_to_voxel_axis_id( voxel_axis_id );
-            }
-
-            int get_max_voxel_index( const int voxel_dimension ) const {
-                const int world_axis_id = convert_voxel_to_ijk_axis_id(voxel_dimension);
-                return layout_->GetDimensionNumSamples(world_axis_id);
-            }
-
-    };
+};
 
 
 int axis_todim(Axis ax) {
@@ -389,9 +389,7 @@ VoxelBounds get_voxel_bounds(
             voxelline = lineno_index_to_voxel(lineno, vdim, vds_handle.layout());
             break;
         }
-        case CDP: {
-            break;
-        }
+        case CDP:
         default: {
             throw std::runtime_error("Unhandled coordinate system");
         }
