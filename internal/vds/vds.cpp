@@ -168,26 +168,6 @@ requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
     return tmp;
 }
 
-requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
-    requestdata tmp{ data.get(), nullptr, size };
-    data.release();
-    return tmp;
-}
-
-template<typename REQUEST_TYPE>
-requestdata finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
-                            const std::string message,
-                            std::unique_ptr< char[] >& data,
-                            const std::size_t size ) {
-
-    const bool success = request.get()->WaitForCompletion();
-    if( not success ) {
-        throw std::runtime_error(message);
-    }
-
-    return internal::requestdata_from_requested_data( data, size );
-}
-
 class VDSHandle {
 
     private:
@@ -198,6 +178,26 @@ class VDSHandle {
         OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
 
         const std::string seismic_channel_name_{"Amplitude"};
+
+        requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
+            requestdata tmp{ data.get(), nullptr, size };
+            data.release();
+            return tmp;
+        }
+
+        template<typename REQUEST_TYPE>
+        requestdata finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
+                                    const std::string message,
+                                    std::unique_ptr< char[] >& data,
+                                    const std::size_t size ) {
+
+            const bool success = request.get()->WaitForCompletion();
+            if( not success ) {
+                throw std::runtime_error(message);
+            }
+
+            return requestdata_from_requested_data( data, size );
+        }
 
         /*
         * Unit validation of Z-slices
