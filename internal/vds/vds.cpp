@@ -651,20 +651,20 @@ struct requestdata fetch_fence(
             }
         };
 
-        validate_boundary(0);
-        validate_boundary(1);
+        for (size_t dim = 0; dim < 2; ++dim) {
+            validate_boundary(dim);
 
-        /* openvds uses rounding down for Nearest interpolation.
-         * As it is counterintuitive, we fix it by snapping to nearest index
-         * and rounding half-up.
-         */
-        if (interpolation_method == NEAREST) {
-            coordinate[0] = std::round(coordinate[0] + 1) - 1;
-            coordinate[1] = std::round(coordinate[1] + 1) - 1;
+            /* openvds uses rounding down for Nearest interpolation.
+             * As it is counterintuitive, we fix it by snapping to nearest index
+             * and rounding half-up.
+             */
+            if (interpolation_method == NEAREST) {
+                coordinate[dim] = std::round(coordinate[dim] + 1) - 1;
+            }
+
+            coords[i][dimension_map[dim]] = coordinate[dim];
         }
 
-        coords[i][dimension_map[0]] = coordinate[0];
-        coords[i][dimension_map[1]] = coordinate[1];
     }
 
     // TODO: Verify that trace dimension is always 0
