@@ -377,6 +377,105 @@ class VDSHandle {
             return this->convert_ijk_to_voxel_axis_id(dimension);
         }
 
+
+        int lineno_annotation_to_voxel(
+            const int lineno,
+            const int vdim
+        ) const {
+            /* Assume that annotation coordinates are integers */
+            int min      = layout_->GetDimensionMin(vdim);
+            int max      = layout_->GetDimensionMax(vdim);
+            int nsamples = layout_->GetDimensionNumSamples(vdim);
+
+            auto stride = (max - min) / (nsamples - 1);
+
+            if (lineno < min || lineno > max || (lineno - min) % stride) {
+                throw std::runtime_error(
+                    "Invalid lineno: " + std::to_string(lineno) +
+                    ", valid range: [" + std::to_string(min) +
+                    ":" + std::to_string(max) +
+                    ":" + std::to_string(stride) + "]"
+                );
+            }
+
+            int voxelline = (lineno - min) / stride;
+            return voxelline;
+        }
+
+        int lineno_index_to_voxel(
+            const int lineno,
+            const int vdim
+        ) const {
+            /* Line-numbers in IJK match Voxel - do bound checking and return*/
+            int min = 0;
+            int max = layout_->GetDimensionNumSamples(vdim) - 1;
+
+            if (lineno < min || lineno > max) {
+                throw std::runtime_error(
+                    "Invalid lineno: " + std::to_string(lineno) +
+                    ", valid range: [" + std::to_string(min) +
+                    ":" + std::to_string(max) +
+                    ":1]"
+                );
+            }
+
+            return lineno;
+        }
+
+        static CoordinateSystem axis_tosystem(const Axis ax) {
+            switch (ax) {
+                case I:
+                case J:
+                case K:
+                    return INDEX;
+                case INLINE:
+                case CROSSLINE:
+                case DEPTH:
+                case TIME:
+                case SAMPLE:
+                    return ANNOTATION;
+                default: {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+        }
+
+        /*
+         * Convert target dimension/axis + lineno to VDS voxel coordinates.
+         */
+        VoxelBounds get_voxel_bounds(
+            Axis ax,
+            int lineno
+        ) {
+            VoxelBounds voxel_bounds;
+            for (std::size_t i = 0; i < 3; ++i)
+                voxel_bounds.upper[i] = this->layout_->GetDimensionNumSamples(i);
+
+            int voxelline;
+            const int vdim = this->get_voxel_axis_id_of(ax);
+
+            const int system = axis_tosystem(ax);
+            switch (system) {
+                case ANNOTATION: {
+                    voxelline = lineno_annotation_to_voxel(lineno, vdim);
+                    break;
+                }
+                case INDEX: {
+                    voxelline = lineno_index_to_voxel(lineno, vdim);
+                    break;
+                }
+                case CDP:
+                default: {
+                    throw std::runtime_error("Unhandled coordinate system");
+                }
+            }
+
+            voxel_bounds.lower[vdim] = voxelline;
+            voxel_bounds.upper[vdim] = voxelline + 1;
+
+            return voxel_bounds;
+        }
+
         void validate_request_axis( const Axis ax ) const {
 
             const char* z_axis_unit
@@ -444,108 +543,6 @@ class VDSHandle {
 
 };
 
-CoordinateSystem axis_tosystem(Axis ax) {
-    switch (ax) {
-        case I:
-        case J:
-        case K:
-            return INDEX;
-        case INLINE:
-        case CROSSLINE:
-        case DEPTH:
-        case TIME:
-        case SAMPLE:
-            return ANNOTATION;
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
-int lineno_annotation_to_voxel(
-    int lineno,
-    int vdim,
-    const OpenVDS::VolumeDataLayout &layout
-) {
-    /* Assume that annotation coordinates are integers */
-    int min      = layout.GetDimensionMin(vdim);
-    int max      = layout.GetDimensionMax(vdim);
-    int nsamples = layout.GetDimensionNumSamples(vdim);
-
-    auto stride = (max - min) / (nsamples - 1);
-
-    if (lineno < min || lineno > max || (lineno - min) % stride) {
-        throw std::runtime_error(
-            "Invalid lineno: " + std::to_string(lineno) +
-            ", valid range: [" + std::to_string(min) +
-            ":" + std::to_string(max) +
-            ":" + std::to_string(stride) + "]"
-        );
-    }
-
-    int voxelline = (lineno - min) / stride;
-    return voxelline;
-}
-
-int lineno_index_to_voxel(
-    int lineno,
-    int vdim,
-    const OpenVDS::VolumeDataLayout &layout
-) {
-    /* Line-numbers in IJK match Voxel - do bound checking and return*/
-    int min = 0;
-    int max = layout.GetDimensionNumSamples(vdim) - 1;
-
-    if (lineno < min || lineno > max) {
-        throw std::runtime_error(
-            "Invalid lineno: " + std::to_string(lineno) +
-            ", valid range: [" + std::to_string(min) +
-            ":" + std::to_string(max) +
-            ":1]"
-        );
-    }
-
-    return lineno;
-}
-
-/*
- * Convert target dimension/axis + lineno to VDS voxel coordinates.
- */
-VoxelBounds get_voxel_bounds(
-    Axis ax,
-    int lineno,
-    const VDSHandle& vds_handle
-) {
-    VoxelBounds voxel_bounds;
-    for (std::size_t i = 0; i < 3; ++i)
-        voxel_bounds.upper[i] = vds_handle.layout().GetDimensionNumSamples(i);
-
-    int voxelline;
-    const int vdim = vds_handle.get_voxel_axis_id_of(ax);
-
-    const int system = axis_tosystem(ax);
-    switch (system) {
-        case ANNOTATION: {
-            voxelline = lineno_annotation_to_voxel(lineno, vdim, vds_handle.layout());
-            break;
-        }
-        case INDEX: {
-            voxelline = lineno_index_to_voxel(lineno, vdim, vds_handle.layout());
-            break;
-        }
-        case CDP:
-        default: {
-            throw std::runtime_error("Unhandled coordinate system");
-        }
-    }
-
-    voxel_bounds.lower[vdim] = voxelline;
-    voxel_bounds.upper[vdim] = voxelline + 1;
-
-    return voxel_bounds;
-}
-
-
 class BoundingBox {
 public:
     explicit BoundingBox(
@@ -612,7 +609,7 @@ struct requestdata fetch_slice(
     VDSHandle vds_handle(url, credentials);
     vds_handle.validate_request_axis(ax);
 
-    VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
+    VoxelBounds voxel_bounds = vds_handle.get_voxel_bounds(ax, lineno);
 
     return vds_handle.request_volume_subset( voxel_bounds );
 }
