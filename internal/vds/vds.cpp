@@ -82,6 +82,25 @@ OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation)
     }
 }
 
+int axis_todim(Axis ax) {
+    switch (ax) {
+        case I:
+        case INLINE:
+            return 0;
+        case J:
+        case CROSSLINE:
+            return 1;
+        case K:
+        case DEPTH:
+        case TIME:
+        case SAMPLE:
+            return 2;
+        default: {
+            throw std::runtime_error("Unhandled axis");
+        }
+    }
+}
+
 class ValidZAxisCombinations {
 
     private:
@@ -353,6 +372,11 @@ class VDSHandle {
             return layout_->GetDimensionNumSamples(world_axis_id);
         }
 
+        int get_voxel_axis_id_of( const Axis axis ) const {
+            const int dimension = axis_todim(axis);
+            return this->convert_ijk_to_voxel_axis_id(dimension);
+        }
+
         void validate_request_axis( const Axis ax ) const {
 
             const char* z_axis_unit
@@ -419,25 +443,6 @@ class VDSHandle {
         }
 
 };
-
-int axis_todim(Axis ax) {
-    switch (ax) {
-        case I:
-        case INLINE:
-            return 0;
-        case J:
-        case CROSSLINE:
-            return 1;
-        case K:
-        case DEPTH:
-        case TIME:
-        case SAMPLE:
-            return 2;
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
 
 CoordinateSystem axis_tosystem(Axis ax) {
     switch (ax) {
@@ -516,8 +521,7 @@ VoxelBounds get_voxel_bounds(
         voxel_bounds.upper[i] = vds_handle.layout().GetDimensionNumSamples(i);
 
     int voxelline;
-    const int dimension = axis_todim(ax);
-    auto vdim   = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
+    const int vdim = vds_handle.get_voxel_axis_id_of(ax);
 
     const int system = axis_tosystem(ax);
     switch (system) {
@@ -621,8 +625,7 @@ struct requestdata fetch_slice_metadata(
     VDSHandle vds_handle(url, credentials);
     vds_handle.validate_request_axis(ax);
 
-    auto dimension = axis_todim(ax);
-    auto vdim = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
+    const int vdim = vds_handle.get_voxel_axis_id_of(ax);
 
     nlohmann::json meta;
     meta["format"] = vds_handle.get_channel_format_string(VDSChannelID::Amplitude);
