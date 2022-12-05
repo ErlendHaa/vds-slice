@@ -392,7 +392,7 @@ class VDSHandle {
             check_axis( VDSAxisID::Inline, OpenVDS::KnownAxisNames::Inline() );
             check_axis( VDSAxisID::Crossline, OpenVDS::KnownAxisNames::Crossline() );
 
-            auto z = this->layout_->GetDimensionName(0);
+            const auto z = this->layout_->GetDimensionName(VDSAxisID::DepthSampleTime);
 
             auto isoneof = [z](const char* x) {
                 return !std::strcmp(x, z);
@@ -402,7 +402,7 @@ class VDSHandle {
                                  ValidZAxisCombinations::axis_labels().end(),
                                  isoneof) )
             {
-                const char* actual_name = this->layout_->GetDimensionName(0);
+                const char* actual_name = this->layout_->GetDimensionName(VDSAxisID::DepthSampleTime);
                 const std::string msg = std::string("Unsupported axis ordering in VDS for axis nr. 0 named ")
                                         + actual_name
                                         + ", expected "
@@ -444,7 +444,7 @@ class VDSHandle {
 
         std::string get_format_string_of_seismic_channel() const {
             using namespace OpenVDS;
-            VolumeDataFormat format = layout_->GetChannelFormat(seismic_channel_id_);
+            const VolumeDataFormat format = layout_->GetChannelFormat(seismic_channel_id_);
             switch (format) {
                 case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
                 case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
@@ -523,7 +523,7 @@ class VDSHandle {
         void validate_request_axis( const Axis ax ) const {
 
             const char* z_axis_unit
-                = layout_->GetAxisDescriptor(VDSAxisID::DepthSampleTime).GetUnit();
+                = layout_->GetDimensionUnit(VDSAxisID::DepthSampleTime);
 
             const bool is_valid_axis_unit =
                 this->unit_validation(
@@ -608,7 +608,7 @@ class VDSHandle {
 
             std::unique_ptr< char[] > data(new char[size]());
 
-            auto request = access_manager_.RequestVolumeTraces(
+            const auto request = access_manager_.RequestVolumeTraces(
                     (float*)data.get(),
                     size,
                     OpenVDS::Dimensions_012,
@@ -634,7 +634,7 @@ class VDSHandle {
                 this->seismic_channel_id_);
 
             std::unique_ptr< char[] > data(new char[size]());
-            auto request = access_manager_.RequestVolumeSubset(
+            const auto request = access_manager_.RequestVolumeSubset(
                 data.get(),
                 size,
                 OpenVDS::Dimensions_012,
