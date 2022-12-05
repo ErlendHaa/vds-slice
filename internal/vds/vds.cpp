@@ -51,56 +51,6 @@ struct AxisUnitCombination {
     {}
 };
 
-
-const std::string axis_tostring(Axis ax) {
-    switch (ax) {
-        case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
-        case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
-        case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
-        case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
-        case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
-        case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
-        case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
-        case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
-OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation) {
-    switch (interpolation)
-    {
-        case NEAREST: return OpenVDS::InterpolationMethod::Nearest;
-        case LINEAR: return OpenVDS::InterpolationMethod::Linear;
-        case CUBIC: return OpenVDS::InterpolationMethod::Cubic;
-        case ANGULAR: return OpenVDS::InterpolationMethod::Angular;
-        case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
-        default: {
-            throw std::runtime_error("Unhandled interpolation method");
-        }
-    }
-}
-
-int axis_todim(Axis ax) {
-    switch (ax) {
-        case I:
-        case INLINE:
-            return 0;
-        case J:
-        case CROSSLINE:
-            return 1;
-        case K:
-        case DEPTH:
-        case TIME:
-        case SAMPLE:
-            return 2;
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
 class ValidZAxisCombinations {
 
     private:
@@ -178,6 +128,55 @@ class VDSHandle {
         OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
 
         const std::string seismic_channel_name_{"Amplitude"};
+
+        static const std::string axis_tostring(const Axis ax) {
+            switch (ax) {
+                case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
+                case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
+                case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
+                case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
+                case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
+                case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
+                case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
+                case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
+                default: {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+        }
+
+        static OpenVDS::InterpolationMethod to_interpolation( const InterpolationMethod interpolation) {
+            switch (interpolation)
+            {
+                case NEAREST: return OpenVDS::InterpolationMethod::Nearest;
+                case LINEAR: return OpenVDS::InterpolationMethod::Linear;
+                case CUBIC: return OpenVDS::InterpolationMethod::Cubic;
+                case ANGULAR: return OpenVDS::InterpolationMethod::Angular;
+                case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
+                default: {
+                    throw std::runtime_error("Unhandled interpolation method");
+                }
+            }
+        }
+
+        static int axis_todim( const Axis ax) {
+            switch (ax) {
+                case I:
+                case INLINE:
+                    return 0;
+                case J:
+                case CROSSLINE:
+                    return 1;
+                case K:
+                case DEPTH:
+                case TIME:
+                case SAMPLE:
+                    return 2;
+                default: {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+        }
 
         requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
             requestdata tmp{ data.get(), nullptr, size };
@@ -444,9 +443,9 @@ class VDSHandle {
          * Convert target dimension/axis + lineno to VDS voxel coordinates.
          */
         VoxelBounds get_voxel_bounds(
-            Axis ax,
-            int lineno
-        ) {
+            const Axis ax,
+            const int lineno
+        ) const {
             VoxelBounds voxel_bounds;
             for (std::size_t i = 0; i < 3; ++i)
                 voxel_bounds.upper[i] = this->layout_->GetDimensionNumSamples(i);
