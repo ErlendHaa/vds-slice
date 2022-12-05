@@ -178,17 +178,18 @@ class VDSHandle {
             }
         }
 
-        requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data, std::size_t size ) {
+        static requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data,
+                                                            const std::size_t size ) {
             requestdata tmp{ data.get(), nullptr, size };
             data.release();
             return tmp;
         }
 
         template<typename REQUEST_TYPE>
-        requestdata finalize_request( std::shared_ptr<REQUEST_TYPE>& request,
-                                    const std::string message,
-                                    std::unique_ptr< char[] >& data,
-                                    const std::size_t size ) {
+        static requestdata finalize_request( const std::shared_ptr<REQUEST_TYPE>& request,
+                                             const std::string message,
+                                             std::unique_ptr< char[] >& data,
+                                             const std::size_t size ) {
 
             const bool success = request.get()->WaitForCompletion();
             if( not success ) {
@@ -230,7 +231,7 @@ class VDSHandle {
             }
         };
 
-        void validate_dimension() {
+        void validate_dimension() const {
             if (layout_->GetDimensionality() != 3) {
                 throw std::runtime_error(
                     "Unsupported VDS, expected 3 dimensions, got " +
@@ -276,13 +277,13 @@ class VDSHandle {
             }
         }
 
-        void validate_annotations_are_defined() {
+        void validate_annotations_are_defined() const {
             if (not this->ijk_coordinate_transformer_.AnnotationsDefined()) {
                 throw std::runtime_error("VDS doesn't define annotations");
             }
         }
 
-        void validate_data_store() {
+        void validate_data_store() const {
             validate_dimension();
             validate_axes_order();
             validate_annotations_are_defined();
@@ -318,7 +319,7 @@ class VDSHandle {
             return this->ijk_coordinate_transformer_;
         }
 
-        std::string get_channel_format_string( VDSChannelID id ) {
+        std::string get_channel_format_string( const VDSChannelID id ) const {
             using namespace OpenVDS;
             VolumeDataFormat format = layout_->GetChannelFormat(id);
             switch (format) {
@@ -332,7 +333,7 @@ class VDSHandle {
         }
 
         std::string get_crs_string() const {
-            auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
+            const auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
             return layout_->GetMetadataString(crs.GetCategory(), crs.GetName());
         }
 
@@ -382,11 +383,11 @@ class VDSHandle {
             const int vdim
         ) const {
             /* Assume that annotation coordinates are integers */
-            int min      = layout_->GetDimensionMin(vdim);
-            int max      = layout_->GetDimensionMax(vdim);
-            int nsamples = layout_->GetDimensionNumSamples(vdim);
+            const int min      = layout_->GetDimensionMin(vdim);
+            const int max      = layout_->GetDimensionMax(vdim);
+            const int nsamples = layout_->GetDimensionNumSamples(vdim);
 
-            auto stride = (max - min) / (nsamples - 1);
+            const auto stride = (max - min) / (nsamples - 1);
 
             if (lineno < min || lineno > max || (lineno - min) % stride) {
                 throw std::runtime_error(
@@ -397,7 +398,7 @@ class VDSHandle {
                 );
             }
 
-            int voxelline = (lineno - min) / stride;
+            const int voxelline = (lineno - min) / stride;
             return voxelline;
         }
 
@@ -406,8 +407,8 @@ class VDSHandle {
             const int vdim
         ) const {
             /* Line-numbers in IJK match Voxel - do bound checking and return*/
-            int min = 0;
-            int max = layout_->GetDimensionNumSamples(vdim) - 1;
+            const int min = 0;
+            const int max = layout_->GetDimensionNumSamples(vdim) - 1;
 
             if (lineno < min || lineno > max) {
                 throw std::runtime_error(
@@ -614,29 +615,29 @@ public:
         transformer = OpenVDS::IJKCoordinateTransformer(&layout);
     }
 
-    std::vector< std::pair<int, int> >       index()      noexcept (true);
-    std::vector< std::pair<int, int> >       annotation() noexcept (true);
-    std::vector< std::pair<double, double> > world()      noexcept (true);
+    std::vector< std::pair<int, int> >       index()      const noexcept (true);
+    std::vector< std::pair<int, int> >       annotation() const noexcept (true);
+    std::vector< std::pair<double, double> > world()      const noexcept (true);
 private:
     OpenVDS::IJKCoordinateTransformer transformer;
     const OpenVDS::VolumeDataLayout &layout;
 };
 
 
-std::vector< std::pair<int, int> > BoundingBox::index() noexcept (true) {
-    auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
-    auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
+std::vector< std::pair<int, int> > BoundingBox::index() const noexcept (true) {
+    const auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
+    const auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
 
     return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
 }
 
-std::vector< std::pair<double, double> > BoundingBox::world() noexcept (true) {
+std::vector< std::pair<double, double> > BoundingBox::world() const noexcept (true) {
     std::vector< std::pair<double, double> > world_points;
 
-    auto points = this->index();
+    const auto points = this->index();
     std::for_each(points.begin(), points.end(),
         [&](const std::pair<int, int>& point) {
-            auto p = this->transformer.IJKIndexToWorld(
+            const auto p = this->transformer.IJKIndexToWorld(
                 { point.first, point.second, 0 }
             );
             world_points.emplace_back(p[0], p[1]);
@@ -646,10 +647,10 @@ std::vector< std::pair<double, double> > BoundingBox::world() noexcept (true) {
     return world_points;
 };
 
-std::vector< std::pair<int, int> > BoundingBox::annotation() noexcept (true) {
+std::vector< std::pair<int, int> > BoundingBox::annotation() const noexcept (true) {
     auto points = this->index();
     std::transform(points.begin(), points.end(), points.begin(),
-        [this](std::pair<int, int>& point) {
+        [this](const std::pair<int, int>& point) {
             auto anno = this->transformer.IJKIndexToAnnotation({
                 point.first,
                 point.second,
@@ -663,10 +664,10 @@ std::vector< std::pair<int, int> > BoundingBox::annotation() noexcept (true) {
 };
 
 struct requestdata fetch_slice(
-    std::string url,
-    std::string credentials,
-    Axis ax,
-    int lineno
+    const std::string url,
+    const std::string credentials,
+    const Axis ax,
+    const int lineno
 ) {
     VDSHandle vds_handle(url, credentials);
     vds_handle.validate_request_axis(ax);
@@ -677,9 +678,9 @@ struct requestdata fetch_slice(
 }
 
 struct requestdata fetch_slice_metadata(
-    std::string url,
-    std::string credentials,
-    Axis ax
+    const std::string url,
+    const std::string credentials,
+    const Axis ax
 ) {
     VDSHandle vds_handle(url, credentials);
     vds_handle.validate_request_axis(ax);
@@ -717,10 +718,10 @@ struct requestdata fetch_slice_metadata(
 struct requestdata fetch_fence(
     const std::string& url,
     const std::string& credentials,
-    enum CoordinateSystem coordinate_system,
+    const enum CoordinateSystem coordinate_system,
     const float* coordinates,
-    size_t npoints,
-    enum InterpolationMethod interpolation_method
+    const size_t npoints,
+    const enum InterpolationMethod interpolation_method
 ) {
     VDSHandle vds_handle(url, credentials);
 
@@ -752,7 +753,7 @@ struct requestdata metadata(
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
     meta["crs"] = vds_handle.get_crs_string();
 
-    auto bbox = internal::BoundingBox(vds_handle.layout());
+    const auto bbox = internal::BoundingBox(vds_handle.layout());
     meta["boundingBox"]["ij"]   = bbox.index();
     meta["boundingBox"]["cdp"]  = bbox.world();
     meta["boundingBox"]["ilxl"] = bbox.annotation();
@@ -764,9 +765,9 @@ struct requestdata metadata(
 }
 
 struct requestdata fetch_fence_metadata(
-    std::string url,
-    std::string credentials,
-    size_t npoints
+    const std::string url,
+    const std::string credentials,
+    const size_t npoints
 ) {
     internal::VDSHandle vds_handle(url, credentials);
 
@@ -787,11 +788,11 @@ struct requestdata fetch_fence_metadata(
 struct requestdata slice(
     const char* vds,
     const char* credentials,
-    int lineno,
-    Axis ax
+    const int lineno,
+    const Axis ax
 ) {
-    std::string cube(vds);
-    std::string cred(credentials);
+    const std::string cube(vds);
+    const std::string cred(credentials);
 
     try {
         return internal::fetch_slice(cube, cred, ax, lineno);
@@ -803,10 +804,10 @@ struct requestdata slice(
 struct requestdata slice_metadata(
     const char* vds,
     const char* credentials,
-    Axis ax
+    const Axis ax
 ) {
-    std::string cube(vds);
-    std::string cred(credentials);
+    const std::string cube(vds);
+    const std::string cred(credentials);
 
     try {
         return internal::fetch_slice_metadata(cube, cred, ax);
@@ -818,13 +819,13 @@ struct requestdata slice_metadata(
 struct requestdata fence(
     const char* vds,
     const char* credentials,
-    enum CoordinateSystem coordinate_system,
+    const enum CoordinateSystem coordinate_system,
     const float* coordinates,
-    size_t npoints,
-    enum InterpolationMethod interpolation_method
+    const size_t npoints,
+    const enum InterpolationMethod interpolation_method
 ) {
-    std::string cube(vds);
-    std::string cred(credentials);
+    const std::string cube(vds);
+    const std::string cred(credentials);
 
     try {
         return internal::fetch_fence(
@@ -838,10 +839,10 @@ struct requestdata fence(
 struct requestdata fence_metadata(
     const char* vds,
     const char* credentials,
-    size_t npoints
+    const size_t npoints
 ) {
-    std::string cube(vds);
-    std::string cred(credentials);
+    const std::string cube(vds);
+    const std::string cred(credentials);
 
     try {
         return internal::fetch_fence_metadata(cube, cred, npoints);
@@ -855,8 +856,8 @@ struct requestdata metadata(
     const char* credentials
 ) {
     try {
-        std::string cube(vds);
-        std::string cred(credentials);
+        const std::string cube(vds);
+        const std::string cred(credentials);
         return internal::metadata(cube, cred);
     } catch (const std::exception& e) {
         return internal::handle_error(e);
