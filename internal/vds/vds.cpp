@@ -365,18 +365,6 @@ class VDSHandle {
             validate_data_store();
         }
 
-        OpenVDS::VolumeDataAccessManager& access_manager() {
-            return this->access_manager_;
-        }
-
-        const OpenVDS::VolumeDataLayout &layout() const {
-            return *this->layout_;
-        }
-
-        const OpenVDS::IJKCoordinateTransformer &ijk_coordinate_transformer() const {
-            return this->ijk_coordinate_transformer_;
-        }
-
         std::string get_channel_format_string( const VDSChannelID id ) const {
             using namespace OpenVDS;
             VolumeDataFormat format = layout_->GetChannelFormat(id);
@@ -571,9 +559,9 @@ class VDSHandle {
                     case INDEX:
                         return OpenVDS::Vector<double, 3> {x, y, 0};
                     case ANNOTATION:
-                        return this->ijk_coordinate_transformer().AnnotationToIJKPosition({x, y, 0});
+                        return this->ijk_coordinate_transformer_.AnnotationToIJKPosition({x, y, 0});
                     case CDP:
-                        return this->ijk_coordinate_transformer().WorldToIJKPosition({x, y, 0});
+                        return this->ijk_coordinate_transformer_.WorldToIJKPosition({x, y, 0});
                     default: {
                         throw std::runtime_error("Unhandled coordinate system");
                     }
