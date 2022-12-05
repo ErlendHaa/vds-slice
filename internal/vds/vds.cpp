@@ -45,9 +45,9 @@ enum VDSAxisID {
 
 struct AxisUnitCombination {
     const char* label;
-    const std::vector<const char*> units;
+    const std::vector<char const * const> units;
 
-    AxisUnitCombination( const char* l, const std::vector<const char*> vu) : label(l), units(std::move(vu))
+    AxisUnitCombination( char const * const l, const std::vector<char const * const> vu) : label(l), units(std::move(vu))
     {}
 };
 
@@ -61,22 +61,22 @@ class ValidZAxisCombinations {
         };
 
         static const std::array<AxisUnitCombination, 3 > label_unit_combinations_;
-        static const std::array<const char*, 3> axis_labels_;
+        static const std::array<char const* const, 3> axis_labels_;
 
     public:
-        static const std::array<const char*, 3>& axis_labels(){
+        static const std::array<char const * const, 3>& axis_labels(){
             return axis_labels_;
         }
 
-        static const std::vector<const char*>& depth_units() {
+        static const std::vector<char const * const>& depth_units() {
             return label_unit_combinations_[Index::depth].units;
         }
 
-        static const std::vector<const char*>& time_units() {
+        static const std::vector<char const * const>& time_units() {
             return label_unit_combinations_[Index::time].units;
         }
 
-        static const std::vector<const char*>& sample_units() {
+        static const std::vector<char const * const>& sample_units() {
             return label_unit_combinations_[Index::sample].units;
         }
 };
@@ -85,7 +85,7 @@ class ValidZAxisCombinations {
 const std::array<AxisUnitCombination, 3 > ValidZAxisCombinations::label_unit_combinations_ {
     AxisUnitCombination(
         OpenVDS::KnownAxisNames::Depth(),
-        std::vector<const char*>{
+        std::vector<char const * const>{
             OpenVDS::KnownUnitNames::Meter(),
             OpenVDS::KnownUnitNames::Foot(),
             OpenVDS::KnownUnitNames::USSurveyFoot()
@@ -93,20 +93,20 @@ const std::array<AxisUnitCombination, 3 > ValidZAxisCombinations::label_unit_com
     ),
     AxisUnitCombination(
         OpenVDS::KnownAxisNames::Time(),
-        std::vector<const char*>{
+        std::vector<char const * const>{
             OpenVDS::KnownUnitNames::Millisecond(),
             OpenVDS::KnownUnitNames::Second()
         }
     ),
     AxisUnitCombination(
         OpenVDS::KnownAxisNames::Sample(),
-        std::vector<const char*>{
+        std::vector<char const * const>{
             OpenVDS::KnownUnitNames::Unitless()
         }
     )
 };
 
-const std::array<const char*, 3> ValidZAxisCombinations::axis_labels_ {
+const std::array<char const * const, 3> ValidZAxisCombinations::axis_labels_ {
     label_unit_combinations_[Index::depth].label,
     label_unit_combinations_[Index::time].label,
     label_unit_combinations_[Index::sample].label,
@@ -118,13 +118,71 @@ requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
     return tmp;
 }
 
+
+class BoundingBox {
+public:
+    explicit BoundingBox(
+        const OpenVDS::VolumeDataLayout &layout
+    ) : layout(layout)
+    {
+        transformer = OpenVDS::IJKCoordinateTransformer(&layout);
+    }
+
+    std::vector< std::pair<int, int> >       index()      const noexcept (true);
+    std::vector< std::pair<int, int> >       annotation() const noexcept (true);
+    std::vector< std::pair<double, double> > world()      const noexcept (true);
+private:
+    OpenVDS::IJKCoordinateTransformer transformer;
+    const OpenVDS::VolumeDataLayout &layout;
+};
+
+
+std::vector< std::pair<int, int> > BoundingBox::index() const noexcept (true) {
+    const auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
+    const auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
+
+    return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
+}
+
+std::vector< std::pair<double, double> > BoundingBox::world() const noexcept (true) {
+    std::vector< std::pair<double, double> > world_points;
+
+    const auto points = this->index();
+    std::for_each(points.begin(), points.end(),
+        [&](const std::pair<int, int>& point) {
+            const auto p = this->transformer.IJKIndexToWorld(
+                { point.first, point.second, 0 }
+            );
+            world_points.emplace_back(p[0], p[1]);
+        }
+    );
+
+    return world_points;
+};
+
+std::vector< std::pair<int, int> > BoundingBox::annotation() const noexcept (true) {
+    auto points = this->index();
+    std::transform(points.begin(), points.end(), points.begin(),
+        [this](const std::pair<int, int>& point) {
+            auto anno = this->transformer.IJKIndexToAnnotation({
+                point.first,
+                point.second,
+                0
+            });
+            return std::pair<int, int>{anno[0], anno[1]};
+        }
+    );
+
+    return points;
+};
+
 class VDSHandle {
 
     private:
         OpenVDS::ScopedVDSHandle handle_;
         OpenVDS::Error error_;
         OpenVDS::VolumeDataAccessManager access_manager_;
-        const OpenVDS::VolumeDataLayout *layout_;
+        OpenVDS::VolumeDataLayout const * layout_;
         OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
 
         const std::string seismic_channel_name_{"Amplitude"};
@@ -206,9 +264,9 @@ class VDSHandle {
         * E.g. a Time slice is only valid if the units of the Z-axis in the VDS is
         * "Seconds" or "Milliseconds"
         */
-        bool unit_validation( const Axis ax, const char* zunit) const {
+        bool unit_validation( const Axis ax, char const * const zunit) const {
 
-            auto isoneof = [zunit](const char* x) {
+            auto isoneof = [zunit](char const * const x) {
                 return !std::strcmp(x, zunit);
             };
 
@@ -240,9 +298,9 @@ class VDSHandle {
             }
         }
 
-        void check_axis( const int dimension, const char* expected_name ) const
+        void check_axis( const int dimension, char const * const  expected_name ) const
         {
-            const char* actual_name = this->layout_->GetDimensionName(dimension);
+            char const * const actual_name = this->layout_->GetDimensionName(dimension);
             if (std::strcmp(actual_name , expected_name)) {
                 const std::string msg = std::string("Unsupported axis ordering in VDS for axis nr. ")
                                         + std::to_string(dimension)
@@ -377,6 +435,9 @@ class VDSHandle {
             return this->convert_ijk_to_voxel_axis_id(dimension);
         }
 
+        BoundingBox get_bounding_box() {
+            return BoundingBox(*this->layout_);
+        }
 
         int lineno_annotation_to_voxel(
             const int lineno,
@@ -606,63 +667,6 @@ class VDSHandle {
 
 };
 
-class BoundingBox {
-public:
-    explicit BoundingBox(
-        const OpenVDS::VolumeDataLayout &layout
-    ) : layout(layout)
-    {
-        transformer = OpenVDS::IJKCoordinateTransformer(&layout);
-    }
-
-    std::vector< std::pair<int, int> >       index()      const noexcept (true);
-    std::vector< std::pair<int, int> >       annotation() const noexcept (true);
-    std::vector< std::pair<double, double> > world()      const noexcept (true);
-private:
-    OpenVDS::IJKCoordinateTransformer transformer;
-    const OpenVDS::VolumeDataLayout &layout;
-};
-
-
-std::vector< std::pair<int, int> > BoundingBox::index() const noexcept (true) {
-    const auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
-    const auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
-
-    return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
-}
-
-std::vector< std::pair<double, double> > BoundingBox::world() const noexcept (true) {
-    std::vector< std::pair<double, double> > world_points;
-
-    const auto points = this->index();
-    std::for_each(points.begin(), points.end(),
-        [&](const std::pair<int, int>& point) {
-            const auto p = this->transformer.IJKIndexToWorld(
-                { point.first, point.second, 0 }
-            );
-            world_points.emplace_back(p[0], p[1]);
-        }
-    );
-
-    return world_points;
-};
-
-std::vector< std::pair<int, int> > BoundingBox::annotation() const noexcept (true) {
-    auto points = this->index();
-    std::transform(points.begin(), points.end(), points.begin(),
-        [this](const std::pair<int, int>& point) {
-            auto anno = this->transformer.IJKIndexToAnnotation({
-                point.first,
-                point.second,
-                0
-            });
-            return std::pair<int, int>{anno[0], anno[1]};
-        }
-    );
-
-    return points;
-};
-
 struct requestdata fetch_slice(
     const std::string url,
     const std::string credentials,
@@ -753,7 +757,7 @@ struct requestdata metadata(
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
     meta["crs"] = vds_handle.get_crs_string();
 
-    const auto bbox = internal::BoundingBox(vds_handle.layout());
+    const auto bbox = vds_handle.get_bounding_box();
     meta["boundingBox"]["ij"]   = bbox.index();
     meta["boundingBox"]["cdp"]  = bbox.world();
     meta["boundingBox"]["ilxl"] = bbox.annotation();
@@ -786,8 +790,8 @@ struct requestdata fetch_fence_metadata(
 
 
 struct requestdata slice(
-    const char* vds,
-    const char* credentials,
+    char const * const vds,
+    char const * const credentials,
     const int lineno,
     const Axis ax
 ) {
@@ -802,8 +806,8 @@ struct requestdata slice(
 }
 
 struct requestdata slice_metadata(
-    const char* vds,
-    const char* credentials,
+    char const * const vds,
+    char const * const credentials,
     const Axis ax
 ) {
     const std::string cube(vds);
@@ -817,10 +821,10 @@ struct requestdata slice_metadata(
 }
 
 struct requestdata fence(
-    const char* vds,
-    const char* credentials,
+    char const * const vds,
+    char const * const credentials,
     const enum CoordinateSystem coordinate_system,
-    const float* coordinates,
+    float const * const coordinates,
     const size_t npoints,
     const enum InterpolationMethod interpolation_method
 ) {
@@ -837,8 +841,8 @@ struct requestdata fence(
 }
 
 struct requestdata fence_metadata(
-    const char* vds,
-    const char* credentials,
+    char const * const vds,
+    char const * const credentials,
     const size_t npoints
 ) {
     const std::string cube(vds);
@@ -852,8 +856,8 @@ struct requestdata fence_metadata(
 }
 
 struct requestdata metadata(
-    const char* vds,
-    const char* credentials
+    char const * const vds,
+    char const * const credentials
 ) {
     try {
         const std::string cube(vds);
