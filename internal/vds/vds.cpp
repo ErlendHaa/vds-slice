@@ -201,6 +201,27 @@ class VDSHandle {
             }
         }
 
+        std::string get_crs_string() const {
+            auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
+            return layout_->GetMetadataString(crs.GetCategory(), crs.GetName());
+        }
+
+        nlohmann::json get_axis_metadata( const int voxel_dim ) const {
+            return nlohmann::json {
+                { "annotation", layout_->GetDimensionName(voxel_dim)       },
+                { "min",        layout_->GetDimensionMin(voxel_dim)        },
+                { "max",        layout_->GetDimensionMax(voxel_dim)        },
+                { "samples",    layout_->GetDimensionNumSamples(voxel_dim) },
+                { "unit",       layout_->GetDimensionUnit(voxel_dim)       },
+            };
+        }
+
+        nlohmann::json get_shape_metadata( const int npoints ) const {
+            return nlohmann::json::array({ npoints,
+                                           layout_->GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
+        }
+
+
         int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
             const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
             if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
@@ -512,21 +533,6 @@ std::vector< std::pair<int, int> > BoundingBox::annotation() noexcept (true) {
     return points;
 };
 
-nlohmann::json json_axis(
-    int voxel_dim,
-    const OpenVDS::VolumeDataLayout &layout
-) {
-    nlohmann::json doc;
-    doc = {
-        { "annotation", layout.GetDimensionName(voxel_dim)       },
-        { "min",        layout.GetDimensionMin(voxel_dim)        },
-        { "max",        layout.GetDimensionMax(voxel_dim)        },
-        { "samples",    layout.GetDimensionNumSamples(voxel_dim) },
-        { "unit",       layout.GetDimensionUnit(voxel_dim)       },
-    };
-    return doc;
-}
-
 struct requestdata fetch_slice(
     std::string url,
     std::string credentials,
@@ -595,8 +601,9 @@ struct requestdata fetch_slice_metadata(
         if (i == vdim) continue;
         dims.push_back(i);
     }
-    meta["x"] = internal::json_axis(dims[0], vds_handle.layout());
-    meta["y"] = internal::json_axis(dims[1], vds_handle.layout());
+
+    meta["x"] = vds_handle.get_axis_metadata( dims[0] );
+    meta["y"] = vds_handle.get_axis_metadata( dims[1] );
 
     return requestdata_from_dump( meta.dump() );
 }
@@ -704,9 +711,7 @@ struct requestdata metadata(
 
     nlohmann::json meta;
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
-
-    auto crs = OpenVDS::KnownMetadata::SurveyCoordinateSystemCRSWkt();
-    meta["crs"] = vds_handle.layout().GetMetadataString(crs.GetCategory(), crs.GetName());
+    meta["crs"] = vds_handle.get_crs_string();
 
     auto bbox = internal::BoundingBox(vds_handle.layout());
     meta["boundingBox"]["ij"]   = bbox.index();
@@ -714,7 +719,7 @@ struct requestdata metadata(
     meta["boundingBox"]["ilxl"] = bbox.annotation();
 
     for (int i = 2; i >= 0 ; i--) {
-        meta["axis"].push_back(internal::json_axis(i, vds_handle.layout()));
+        meta["axis"].push_back( vds_handle.get_axis_metadata( i ) );
     }
     return internal::requestdata_from_dump( meta.dump() );
 }
@@ -727,7 +732,7 @@ struct requestdata fetch_fence_metadata(
     internal::VDSHandle vds_handle(url, credentials);
 
     nlohmann::json meta;
-    meta["shape"] = nlohmann::json::array({npoints, vds_handle.layout().GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
+    meta["shape"] = vds_handle.get_shape_metadata(npoints);
     meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
 
     return internal::requestdata_from_dump( meta.dump() );
