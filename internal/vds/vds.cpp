@@ -68,6 +68,20 @@ const std::string axis_tostring(Axis ax) {
     }
 }
 
+OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation) {
+    switch (interpolation)
+    {
+        case NEAREST: return OpenVDS::InterpolationMethod::Nearest;
+        case LINEAR: return OpenVDS::InterpolationMethod::Linear;
+        case CUBIC: return OpenVDS::InterpolationMethod::Cubic;
+        case ANGULAR: return OpenVDS::InterpolationMethod::Angular;
+        case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
+        default: {
+            throw std::runtime_error("Unhandled interpolation method");
+        }
+    }
+}
+
 class ValidZAxisCombinations {
 
     private:
@@ -356,6 +370,54 @@ class VDSHandle {
             }
         }
 
+        requestdata request_volume_trace( const unique_ptr<float[][OpenVDS::Dimensionality_Max]> &coordinates,
+                                          const std::size_t npoints,
+                                          const InterpolationMethod interpolation_method ) {
+            // TODO: Verify that trace dimension is always 0
+            const std::size_t size = this->access_manager_.GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::Level0);
+
+            std::unique_ptr< char[] > data(new char[size]());
+
+            auto request = access_manager_.RequestVolumeTraces(
+                    (float*)data.get(),
+                    size,
+                    OpenVDS::Dimensions_012,
+                    VDSLevelOfDetailID::Level0,
+                    VDSChannelID::Amplitude,
+                    coordinates.get(),
+                    npoints,
+                    to_interpolation(interpolation_method),
+                    0
+            );
+
+            return finalize_request( request, "Failed to fetch fence from VDS", data, size );
+        }
+
+        requestdata request_volume_subset( const VoxelBounds& voxel_bounds ) {
+
+            const auto format = layout_->GetChannelFormat(VDSChannelID::Amplitude);
+            const int size = access_manager_.GetVolumeSubsetBufferSize(
+                voxel_bounds.lower,
+                voxel_bounds.upper,
+                format,
+                VDSLevelOfDetailID::Level0,
+                VDSChannelID::Amplitude);
+
+            std::unique_ptr< char[] > data(new char[size]());
+            auto request = access_manager_.RequestVolumeSubset(
+                data.get(),
+                size,
+                OpenVDS::Dimensions_012,
+                VDSLevelOfDetailID::Level0,
+                VDSChannelID::Amplitude,
+                voxel_bounds.lower,
+                voxel_bounds.upper,
+                format
+            );
+
+            return finalize_request( request, "Failed to fetch slice from VDS", data, size );
+        }
+
 };
 
 int axis_todim(Axis ax) {
@@ -391,20 +453,6 @@ CoordinateSystem axis_tosystem(Axis ax) {
             return ANNOTATION;
         default: {
             throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
-OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation) {
-    switch (interpolation)
-    {
-        case NEAREST: return OpenVDS::InterpolationMethod::Nearest;
-        case LINEAR: return OpenVDS::InterpolationMethod::Linear;
-        case CUBIC: return OpenVDS::InterpolationMethod::Cubic;
-        case ANGULAR: return OpenVDS::InterpolationMethod::Angular;
-        case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
-        default: {
-            throw std::runtime_error("Unhandled interpolation method");
         }
     }
 }
@@ -562,27 +610,7 @@ struct requestdata fetch_slice(
 
     VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
 
-    auto format = vds_handle.layout().GetChannelFormat(VDSChannelID::Amplitude);
-    const int size = vds_handle.access_manager().GetVolumeSubsetBufferSize(
-        voxel_bounds.lower,
-        voxel_bounds.upper,
-        format,
-        VDSLevelOfDetailID::Level0,
-        VDSChannelID::Amplitude);
-
-    std::unique_ptr< char[] > data(new char[size]());
-    auto request = vds_handle.access_manager().RequestVolumeSubset(
-        data.get(),
-        size,
-        OpenVDS::Dimensions_012,
-        VDSLevelOfDetailID::Level0,
-        VDSChannelID::Amplitude,
-        voxel_bounds.lower,
-        voxel_bounds.upper,
-        format
-    );
-
-    return finalize_request( request, "Failed to fetch slice from VDS", data, size );
+    return vds_handle.request_volume_subset( voxel_bounds );
 }
 
 struct requestdata fetch_slice_metadata(
@@ -690,24 +718,7 @@ struct requestdata fetch_fence(
 
     }
 
-    // TODO: Verify that trace dimension is always 0
-    auto size = vds_handle.access_manager().GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::Level0);
-
-    std::unique_ptr< char[] > data(new char[size]());
-
-    auto request = vds_handle.access_manager().RequestVolumeTraces(
-            (float*)data.get(),
-            size,
-            OpenVDS::Dimensions_012,
-            VDSLevelOfDetailID::Level0,
-            VDSChannelID::Amplitude,
-            coords.get(),
-            npoints,
-            to_interpolation(interpolation_method),
-            0
-    );
-
-    return finalize_request( request, "Failed to fetch fence from VDS", data, size );
+    return vds_handle.request_volume_trace( coords, npoints, interpolation_method );
 }
 
 struct requestdata handle_error(
