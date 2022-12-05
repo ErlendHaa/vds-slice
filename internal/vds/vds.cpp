@@ -27,12 +27,6 @@ struct VoxelBounds {
     int upper[OpenVDS::VolumeDataLayout::Dimensionality_Max]{1, 1, 1, 1, 1, 1};
 };
 
-enum VDSChannelID {
-    Amplitude = 0,
-    Trace = 1,
-    SegyTraceHeader = 2
-};
-
 enum VDSLevelOfDetailID {
     Level0 = 0
 };
@@ -184,6 +178,7 @@ class VDSHandle {
         OpenVDS::VolumeDataAccessManager access_manager_;
         OpenVDS::VolumeDataLayout const * layout_;
         OpenVDS::IJKCoordinateTransformer ijk_coordinate_transformer_;
+        int seismic_channel_id_;
 
         const std::string seismic_channel_name_{"Amplitude"};
 
@@ -234,6 +229,87 @@ class VDSHandle {
                     throw std::runtime_error("Unhandled axis");
                 }
             }
+        }
+
+                int lineno_annotation_to_voxel(
+            const int lineno,
+            const int vdim
+        ) const {
+            /* Assume that annotation coordinates are integers */
+            const int min      = layout_->GetDimensionMin(vdim);
+            const int max      = layout_->GetDimensionMax(vdim);
+            const int nsamples = layout_->GetDimensionNumSamples(vdim);
+
+            const auto stride = (max - min) / (nsamples - 1);
+
+            if (lineno < min || lineno > max || (lineno - min) % stride) {
+                throw std::runtime_error(
+                    "Invalid lineno: " + std::to_string(lineno) +
+                    ", valid range: [" + std::to_string(min) +
+                    ":" + std::to_string(max) +
+                    ":" + std::to_string(stride) + "]"
+                );
+            }
+
+            const int voxelline = (lineno - min) / stride;
+            return voxelline;
+        }
+
+        int lineno_index_to_voxel(
+            const int lineno,
+            const int vdim
+        ) const {
+            /* Line-numbers in IJK match Voxel - do bound checking and return*/
+            const int min = 0;
+            const int max = layout_->GetDimensionNumSamples(vdim) - 1;
+
+            if (lineno < min || lineno > max) {
+                throw std::runtime_error(
+                    "Invalid lineno: " + std::to_string(lineno) +
+                    ", valid range: [" + std::to_string(min) +
+                    ":" + std::to_string(max) +
+                    ":1]"
+                );
+            }
+
+            return lineno;
+        }
+
+        static CoordinateSystem axis_tosystem(const Axis ax) {
+            switch (ax) {
+                case I:
+                case J:
+                case K:
+                    return INDEX;
+                case INLINE:
+                case CROSSLINE:
+                case DEPTH:
+                case TIME:
+                case SAMPLE:
+                    return ANNOTATION;
+                default: {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+        }
+
+        int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
+            const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
+            if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
+                return mapping[ijk_axis_id];
+            }
+            else {
+                throw std::runtime_error("Unhandled axis");
+            }
+        }
+
+        int convert_voxel_to_ijk_axis_id( const int voxel_axis_id ) const {
+            return convert_ijk_to_voxel_axis_id( voxel_axis_id );
+        }
+
+        int get_max_voxel_index( const int voxel_dimension ) const {
+            const int world_axis_id = convert_voxel_to_ijk_axis_id(voxel_dimension);
+            return layout_->GetDimensionNumSamples(world_axis_id);
         }
 
         static requestdata requestdata_from_requested_data( std::unique_ptr< char[] >  &data,
@@ -313,8 +389,8 @@ class VDSHandle {
         }
 
         void validate_axes_order() const {
-            check_axis( 2, OpenVDS::KnownAxisNames::Inline() );
-            check_axis( 1, OpenVDS::KnownAxisNames::Crossline() );
+            check_axis( VDSAxisID::Inline, OpenVDS::KnownAxisNames::Inline() );
+            check_axis( VDSAxisID::Crossline, OpenVDS::KnownAxisNames::Crossline() );
 
             auto z = this->layout_->GetDimensionName(0);
 
@@ -361,13 +437,14 @@ class VDSHandle {
                 throw std::runtime_error("VDS does not contain valid data layout");
 
             this->ijk_coordinate_transformer_ = OpenVDS::IJKCoordinateTransformer(this->layout_);
+            seismic_channel_id_ = layout_->GetChannelIndex( seismic_channel_name_.c_str() );
 
             validate_data_store();
         }
 
-        std::string get_channel_format_string( const VDSChannelID id ) const {
+        std::string get_format_string_of_seismic_channel() const {
             using namespace OpenVDS;
-            VolumeDataFormat format = layout_->GetChannelFormat(id);
+            VolumeDataFormat format = layout_->GetChannelFormat(seismic_channel_id_);
             switch (format) {
                 case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
                 case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
@@ -398,26 +475,6 @@ class VDSHandle {
                                            layout_->GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
         }
 
-
-        int convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
-            const OpenVDS::IntVector3& mapping = this->ijk_coordinate_transformer_.IJKToVoxelDimensionMap();
-            if ( ijk_axis_id > -1 && ijk_axis_id < 3 ) {
-                return mapping[ijk_axis_id];
-            }
-            else {
-                throw std::runtime_error("Unhandled axis");
-            }
-        }
-
-        int convert_voxel_to_ijk_axis_id( const int voxel_axis_id ) const {
-            return convert_ijk_to_voxel_axis_id( voxel_axis_id );
-        }
-
-        int get_max_voxel_index( const int voxel_dimension ) const {
-            const int world_axis_id = convert_voxel_to_ijk_axis_id(voxel_dimension);
-            return layout_->GetDimensionNumSamples(world_axis_id);
-        }
-
         int get_voxel_axis_id_of( const Axis axis ) const {
             const int dimension = axis_todim(axis);
             return this->convert_ijk_to_voxel_axis_id(dimension);
@@ -425,68 +482,6 @@ class VDSHandle {
 
         BoundingBox get_bounding_box() {
             return BoundingBox(*this->layout_);
-        }
-
-        int lineno_annotation_to_voxel(
-            const int lineno,
-            const int vdim
-        ) const {
-            /* Assume that annotation coordinates are integers */
-            const int min      = layout_->GetDimensionMin(vdim);
-            const int max      = layout_->GetDimensionMax(vdim);
-            const int nsamples = layout_->GetDimensionNumSamples(vdim);
-
-            const auto stride = (max - min) / (nsamples - 1);
-
-            if (lineno < min || lineno > max || (lineno - min) % stride) {
-                throw std::runtime_error(
-                    "Invalid lineno: " + std::to_string(lineno) +
-                    ", valid range: [" + std::to_string(min) +
-                    ":" + std::to_string(max) +
-                    ":" + std::to_string(stride) + "]"
-                );
-            }
-
-            const int voxelline = (lineno - min) / stride;
-            return voxelline;
-        }
-
-        int lineno_index_to_voxel(
-            const int lineno,
-            const int vdim
-        ) const {
-            /* Line-numbers in IJK match Voxel - do bound checking and return*/
-            const int min = 0;
-            const int max = layout_->GetDimensionNumSamples(vdim) - 1;
-
-            if (lineno < min || lineno > max) {
-                throw std::runtime_error(
-                    "Invalid lineno: " + std::to_string(lineno) +
-                    ", valid range: [" + std::to_string(min) +
-                    ":" + std::to_string(max) +
-                    ":1]"
-                );
-            }
-
-            return lineno;
-        }
-
-        static CoordinateSystem axis_tosystem(const Axis ax) {
-            switch (ax) {
-                case I:
-                case J:
-                case K:
-                    return INDEX;
-                case INLINE:
-                case CROSSLINE:
-                case DEPTH:
-                case TIME:
-                case SAMPLE:
-                    return ANNOTATION;
-                default: {
-                    throw std::runtime_error("Unhandled axis");
-                }
-            }
         }
 
         /*
@@ -618,7 +613,7 @@ class VDSHandle {
                     size,
                     OpenVDS::Dimensions_012,
                     VDSLevelOfDetailID::Level0,
-                    VDSChannelID::Amplitude,
+                    seismic_channel_id_,
                     coordinates.get(),
                     npoints,
                     to_interpolation(interpolation_method),
@@ -630,13 +625,13 @@ class VDSHandle {
 
         requestdata request_volume_subset( const VoxelBounds& voxel_bounds ) {
 
-            const auto format = layout_->GetChannelFormat(VDSChannelID::Amplitude);
+            const auto format = layout_->GetChannelFormat(this->seismic_channel_id_);
             const int size = access_manager_.GetVolumeSubsetBufferSize(
                 voxel_bounds.lower,
                 voxel_bounds.upper,
                 format,
                 VDSLevelOfDetailID::Level0,
-                VDSChannelID::Amplitude);
+                this->seismic_channel_id_);
 
             std::unique_ptr< char[] > data(new char[size]());
             auto request = access_manager_.RequestVolumeSubset(
@@ -644,7 +639,7 @@ class VDSHandle {
                 size,
                 OpenVDS::Dimensions_012,
                 VDSLevelOfDetailID::Level0,
-                VDSChannelID::Amplitude,
+                this->seismic_channel_id_,
                 voxel_bounds.lower,
                 voxel_bounds.upper,
                 format
@@ -680,7 +675,7 @@ struct requestdata fetch_slice_metadata(
     const int vdim = vds_handle.get_voxel_axis_id_of(ax);
 
     nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(VDSChannelID::Amplitude);
+    meta["format"] = vds_handle.get_format_string_of_seismic_channel();
 
     /*
      * SEGYImport always writes annotation 'Sample' for axis K. We, on the
@@ -742,7 +737,7 @@ struct requestdata metadata(
     internal::VDSHandle vds_handle(url, credentials);
 
     nlohmann::json meta;
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
+    meta["format"] = vds_handle.get_format_string_of_seismic_channel();
     meta["crs"] = vds_handle.get_crs_string();
 
     const auto bbox = vds_handle.get_bounding_box();
@@ -765,7 +760,7 @@ struct requestdata fetch_fence_metadata(
 
     nlohmann::json meta;
     meta["shape"] = vds_handle.get_shape_metadata(npoints);
-    meta["format"] = vds_handle.get_channel_format_string(internal::VDSChannelID::Amplitude);
+    meta["format"] = vds_handle.get_format_string_of_seismic_channel();
 
     return internal::requestdata_from_dump( meta.dump() );
 }
