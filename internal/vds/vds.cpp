@@ -51,6 +51,23 @@ struct AxisUnitCombination {
     {}
 };
 
+
+const std::string axis_tostring(Axis ax) {
+    switch (ax) {
+        case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
+        case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
+        case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
+        case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
+        case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
+        case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
+        case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
+        case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
+        default: {
+            throw std::runtime_error("Unhandled axis");
+        }
+    }
+}
+
 class ValidZAxisCombinations {
 
     private:
@@ -149,6 +166,38 @@ class VDSHandle {
 
         const std::string seismic_channel_name_{"Amplitude"};
 
+        /*
+        * Unit validation of Z-slices
+        *
+        * Verify that the units of the VDS' Z axis matches the requested slice axis.
+        * E.g. a Time slice is only valid if the units of the Z-axis in the VDS is
+        * "Seconds" or "Milliseconds"
+        */
+        bool unit_validation( const Axis ax, const char* zunit) const {
+
+            auto isoneof = [zunit](const char* x) {
+                return !std::strcmp(x, zunit);
+            };
+
+            switch (ax) {
+                case I:
+                case J:
+                case K:
+                case INLINE:
+                case CROSSLINE:
+                    return true;
+                case DEPTH:
+                    return std::any_of(ValidZAxisCombinations::depth_units().begin(), ValidZAxisCombinations::depth_units().end(), isoneof);
+                case TIME:
+                    return std::any_of(ValidZAxisCombinations::time_units().begin(), ValidZAxisCombinations::time_units().end(), isoneof);
+                case SAMPLE:
+                    return std::any_of(ValidZAxisCombinations::sample_units().begin(), ValidZAxisCombinations::sample_units().end(), isoneof);
+                default: {
+                    throw std::runtime_error("Unhandled axis");
+                }
+            }
+        };
+
         void validate_dimension() {
             if (layout_->GetDimensionality() != 3) {
                 throw std::runtime_error(
@@ -156,6 +205,55 @@ class VDSHandle {
                     std::to_string(layout_->GetDimensionality())
                 );
             }
+        }
+
+        void check_axis( const int dimension, const char* expected_name ) const
+        {
+            const char* actual_name = this->layout_->GetDimensionName(dimension);
+            if (std::strcmp(actual_name , expected_name)) {
+                const std::string msg = std::string("Unsupported axis ordering in VDS for axis nr. ")
+                                        + std::to_string(dimension)
+                                        + " named "
+                                        + actual_name
+                                        + ", expected "
+                                        + expected_name;
+                throw std::runtime_error(msg);
+            }
+        }
+
+        void validate_axes_order() const {
+            check_axis( 2, OpenVDS::KnownAxisNames::Inline() );
+            check_axis( 1, OpenVDS::KnownAxisNames::Crossline() );
+
+            auto z = this->layout_->GetDimensionName(0);
+
+            auto isoneof = [z](const char* x) {
+                return !std::strcmp(x, z);
+            };
+
+            if ( not std::any_of(ValidZAxisCombinations::axis_labels().begin(),
+                                 ValidZAxisCombinations::axis_labels().end(),
+                                 isoneof) )
+            {
+                const char* actual_name = this->layout_->GetDimensionName(0);
+                const std::string msg = std::string("Unsupported axis ordering in VDS for axis nr. 0 named ")
+                                        + actual_name
+                                        + ", expected "
+                                        + "Depth, Time, or Sample";
+                throw std::runtime_error(msg);
+            }
+        }
+
+        void validate_annotations_are_defined() {
+            if (not this->ijk_coordinate_transformer_.AnnotationsDefined()) {
+                throw std::runtime_error("VDS doesn't define annotations");
+            }
+        }
+
+        void validate_data_store() {
+            validate_dimension();
+            validate_axes_order();
+            validate_annotations_are_defined();
         }
 
     public:
@@ -173,7 +271,7 @@ class VDSHandle {
 
             this->ijk_coordinate_transformer_ = OpenVDS::IJKCoordinateTransformer(this->layout_);
 
-            validate_dimension();
+            validate_data_store();
         }
 
         OpenVDS::VolumeDataAccessManager& access_manager() {
@@ -241,8 +339,24 @@ class VDSHandle {
             return layout_->GetDimensionNumSamples(world_axis_id);
         }
 
-};
+        void validate_request_axis( const Axis ax ) const {
 
+            const char* z_axis_unit
+                = layout_->GetAxisDescriptor(VDSAxisID::DepthSampleTime).GetUnit();
+
+            const bool is_valid_axis_unit =
+                this->unit_validation(
+                    ax,
+                    z_axis_unit );
+
+            if (not is_valid_axis_unit) {
+                std::string msg = "Unable to use " + axis_tostring(ax);
+                msg += " on cube with depth units: " + std::string(z_axis_unit);
+                throw std::runtime_error(msg);
+            }
+        }
+
+};
 
 int axis_todim(Axis ax) {
     switch (ax) {
@@ -281,22 +395,6 @@ CoordinateSystem axis_tosystem(Axis ax) {
     }
 }
 
-const std::string axis_tostring(Axis ax) {
-    switch (ax) {
-        case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
-        case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
-        case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
-        case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
-        case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
-        case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
-        case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
-        case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-}
-
 OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation) {
     switch (interpolation)
     {
@@ -308,83 +406,6 @@ OpenVDS::InterpolationMethod to_interpolation(InterpolationMethod interpolation)
         default: {
             throw std::runtime_error("Unhandled interpolation method");
         }
-    }
-}
-
-/*
- * Unit validation of Z-slices
- *
- * Verify that the units of the VDS' Z axis matches the requested slice axis.
- * E.g. a Time slice is only valid if the units of the Z-axis in the VDS is
- * "Seconds" or "Milliseconds"
- */
-bool unit_validation(Axis ax, const char* zunit) {
-
-    auto isoneof = [zunit](const char* x) {
-        return !std::strcmp(x, zunit);
-    };
-
-    switch (ax) {
-        case I:
-        case J:
-        case K:
-        case INLINE:
-        case CROSSLINE:
-            return true;
-        case DEPTH:
-            return std::any_of(ValidZAxisCombinations::depth_units().begin(), ValidZAxisCombinations::depth_units().end(), isoneof);
-        case TIME:
-            return std::any_of(ValidZAxisCombinations::time_units().begin(), ValidZAxisCombinations::time_units().end(), isoneof);
-        case SAMPLE:
-            return std::any_of(ValidZAxisCombinations::sample_units().begin(), ValidZAxisCombinations::sample_units().end(), isoneof);
-        default: {
-            throw std::runtime_error("Unhandled axis");
-        }
-    }
-};
-
-/*
- * Until we know more about how VDS' are constructed w.r.t. to axis ordering
- * we're gonna assume that all VDS' are ordered like so:
- *
- *     voxel[0] -> depth/time/sample
- *     voxel[1] -> crossline
- *     voxel[2] -> inline
- *
- * This function will return 0 if that's not the case
- */
-bool axis_order_validation(const OpenVDS::VolumeDataLayout &layout) {
-    if (std::strcmp(layout.GetDimensionName(VDSAxisID::Inline), OpenVDS::KnownAxisNames::Inline())) {
-        return false;
-    }
-
-    if (std::strcmp(layout.GetDimensionName(VDSAxisID::Crossline), OpenVDS::KnownAxisNames::Crossline())) {
-        return false;
-    }
-
-    auto z = layout.GetDimensionName(VDSAxisID::DepthSampleTime);
-
-    auto isoneof = [z](const char* x) {
-        return !std::strcmp(x, z);
-    };
-
-    return std::any_of(ValidZAxisCombinations::axis_labels().begin(), ValidZAxisCombinations::axis_labels().end(), isoneof);
-}
-
-
-void axis_validation(Axis ax, const OpenVDS::VolumeDataLayout &layout) {
-    if (not axis_order_validation(layout)) {
-        std::string msg = "Unsupported axis ordering in VDS, expected ";
-        msg += "Depth/Time/Sample, Crossline, Inline";
-        throw std::runtime_error(msg);
-    }
-
-    auto zaxis = layout.GetAxisDescriptor(VDSAxisID::DepthSampleTime);
-    const char* zunit = zaxis.GetUnit();
-    if (not unit_validation(ax, zunit)) {
-        std::string msg = "Unable to use " + axis_tostring(ax);
-        msg += " on cube with depth units: " + std::string(zunit);
-        throw std::runtime_error(msg);
     }
 }
 
@@ -453,9 +474,6 @@ VoxelBounds get_voxel_bounds(
     const int system = axis_tosystem(ax);
     switch (system) {
         case ANNOTATION: {
-            if (not vds_handle.ijk_coordinate_transformer().AnnotationsDefined()) {
-                throw std::runtime_error("VDS doesn't define annotations");
-            }
             voxelline = lineno_annotation_to_voxel(lineno, vdim, vds_handle.layout());
             break;
         }
@@ -540,8 +558,7 @@ struct requestdata fetch_slice(
     int lineno
 ) {
     VDSHandle vds_handle(url, credentials);
-
-    axis_validation(ax, vds_handle.layout());
+    vds_handle.validate_request_axis(ax);
 
     VoxelBounds voxel_bounds = get_voxel_bounds(ax, lineno, vds_handle);
 
@@ -574,8 +591,7 @@ struct requestdata fetch_slice_metadata(
     Axis ax
 ) {
     VDSHandle vds_handle(url, credentials);
-
-    axis_validation(ax, vds_handle.layout());
+    vds_handle.validate_request_axis(ax);
 
     auto dimension = axis_todim(ax);
     auto vdim = vds_handle.convert_ijk_to_voxel_axis_id(dimension);
