@@ -18,74 +18,33 @@
 #include <OpenVDS/KnownMetadata.h>
 #include <OpenVDS/IJKCoordinateTransformer.h>
 
+#include "coordinatetransformers.h"
+
 using namespace std;
 
 namespace internal {
-
-struct VoxelBounds {
-    int lower[OpenVDS::VolumeDataLayout::Dimensionality_Max]{0, 0, 0, 0, 0, 0};
-    int upper[OpenVDS::VolumeDataLayout::Dimensionality_Max]{1, 1, 1, 1, 1, 1};
-};
 
 enum VDSLevelOfDetailID {
     Level0 = 0
 };
 
-enum VDSAxisID {
-    DepthSampleTime=0,
-    Crossline=1,
-    Inline=2,
-};
 
-namespace constants {
-namespace annotation {
-
-struct AxisUnitCombination {
-    const char* label;
-    const std::vector<char const * const> units;
-
-    AxisUnitCombination( char const * const l, const std::vector<char const * const> vu) : label(l), units(std::move(vu))
-    {}
-};
-
-enum Index{
-    depth=0,
-    time=1,
-    sample=2
-};
-
-extern const std::array<AxisUnitCombination, 3 > label_unit_combinations{
-    AxisUnitCombination(
-        OpenVDS::KnownAxisNames::Depth(),
-        std::vector<char const * const>{
-            OpenVDS::KnownUnitNames::Meter(),
-            OpenVDS::KnownUnitNames::Foot(),
-            OpenVDS::KnownUnitNames::USSurveyFoot()
-        }
-    ),
-    AxisUnitCombination(
-        OpenVDS::KnownAxisNames::Time(),
-        std::vector<char const * const>{
-            OpenVDS::KnownUnitNames::Millisecond(),
-            OpenVDS::KnownUnitNames::Second()
-        }
-    ),
-    AxisUnitCombination(
-        OpenVDS::KnownAxisNames::Sample(),
-        std::vector<char const * const>{
-            OpenVDS::KnownUnitNames::Unitless()
-        }
-    )
-};
-
-extern const std::array<char const* const, 3> axis_labels{
-    label_unit_combinations[Index::depth].label,
-    label_unit_combinations[Index::time].label,
-    label_unit_combinations[Index::sample].label,
-};
-
-} //namespace annotation
-} //namespace constants
+static const std::unique_ptr<CoordinateToVDSVoxelTransformer> get_coordinate_system( const Axis axis,
+                                                                                OpenVDS::VolumeDataLayout const * vds_layout_)  {
+    switch (axis) {
+        case I:
+        case J:
+        case K:
+            return std::make_unique<IndexToVDSVoxel>(axis, vds_layout_);
+        case INLINE:
+        case CROSSLINE:
+        case DEPTH:
+        case TIME:
+        case SAMPLE:
+            return std::make_unique<AnnotationToVDSVoxel>(axis, vds_layout_);
+    }
+    return std::make_unique<CDPToVDSVoxel>(axis, vds_layout_);
+}
 
 
 requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
@@ -164,22 +123,6 @@ class VDSHandle {
 
         const std::string seismic_channel_name_{"Amplitude"};
 
-        static const std::string axis_tostring(const Axis ax) {
-            switch (ax) {
-                case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
-                case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
-                case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
-                case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
-                case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
-                case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
-                case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
-                case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
-                default: {
-                    throw std::runtime_error("Unhandled axis");
-                }
-            }
-        }
-
         static OpenVDS::InterpolationMethod to_interpolation( const InterpolationMethod interpolation) {
             switch (interpolation)
             {
@@ -190,87 +133,6 @@ class VDSHandle {
                 case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
                 default: {
                     throw std::runtime_error("Unhandled interpolation method");
-                }
-            }
-        }
-
-        static int axis_todim( const Axis ax) {
-            switch (ax) {
-                case I:
-                case INLINE:
-                    return 0;
-                case J:
-                case CROSSLINE:
-                    return 1;
-                case K:
-                case DEPTH:
-                case TIME:
-                case SAMPLE:
-                    return 2;
-                default: {
-                    throw std::runtime_error("Unhandled axis");
-                }
-            }
-        }
-
-                int lineno_annotation_to_voxel(
-            const int lineno,
-            const int vdim
-        ) const {
-            /* Assume that annotation coordinates are integers */
-            const int min      = layout_->GetDimensionMin(vdim);
-            const int max      = layout_->GetDimensionMax(vdim);
-            const int nsamples = layout_->GetDimensionNumSamples(vdim);
-
-            const auto stride = (max - min) / (nsamples - 1);
-
-            if (lineno < min || lineno > max || (lineno - min) % stride) {
-                throw std::runtime_error(
-                    "Invalid lineno: " + std::to_string(lineno) +
-                    ", valid range: [" + std::to_string(min) +
-                    ":" + std::to_string(max) +
-                    ":" + std::to_string(stride) + "]"
-                );
-            }
-
-            const int voxelline = (lineno - min) / stride;
-            return voxelline;
-        }
-
-        int lineno_index_to_voxel(
-            const int lineno,
-            const int vdim
-        ) const {
-            /* Line-numbers in IJK match Voxel - do bound checking and return*/
-            const int min = 0;
-            const int max = layout_->GetDimensionNumSamples(vdim) - 1;
-
-            if (lineno < min || lineno > max) {
-                throw std::runtime_error(
-                    "Invalid lineno: " + std::to_string(lineno) +
-                    ", valid range: [" + std::to_string(min) +
-                    ":" + std::to_string(max) +
-                    ":1]"
-                );
-            }
-
-            return lineno;
-        }
-
-        static CoordinateSystem axis_tosystem(const Axis ax) {
-            switch (ax) {
-                case I:
-                case J:
-                case K:
-                    return INDEX;
-                case INLINE:
-                case CROSSLINE:
-                case DEPTH:
-                case TIME:
-                case SAMPLE:
-                    return ANNOTATION;
-                default: {
-                    throw std::runtime_error("Unhandled axis");
                 }
             }
         }
@@ -314,39 +176,6 @@ class VDSHandle {
 
             return requestdata_from_requested_data( data, size );
         }
-
-        /*
-        * Unit validation of Z-slices
-        *
-        * Verify that the units of the VDS' Z axis matches the requested slice axis.
-        * E.g. a Time slice is only valid if the units of the Z-axis in the VDS is
-        * "Seconds" or "Milliseconds"
-        */
-        bool unit_validation( const Axis ax, char const * const zunit) const {
-
-            auto isoneof = [zunit](char const * const x) {
-                return !std::strcmp(x, zunit);
-            };
-
-            using namespace constants::annotation;
-            switch (ax) {
-                case I:
-                case J:
-                case K:
-                case INLINE:
-                case CROSSLINE:
-                    return true;
-                case DEPTH:
-                    return std::any_of(label_unit_combinations[Index::depth].units.begin(), label_unit_combinations[Index::depth].units.end(), isoneof);
-                case TIME:
-                    return std::any_of(label_unit_combinations[Index::time].units.begin(), label_unit_combinations[Index::time].units.end(), isoneof);
-                case SAMPLE:
-                    return std::any_of(label_unit_combinations[Index::sample].units.begin(), label_unit_combinations[Index::sample].units.end(), isoneof);
-                default: {
-                    throw std::runtime_error("Unhandled axis");
-                }
-            }
-        };
 
         void validate_dimension() const {
             if (layout_->GetDimensionality() != 3) {
@@ -460,65 +289,19 @@ class VDSHandle {
         }
 
         int get_voxel_axis_id_of( const Axis axis ) const {
-            const int dimension = axis_todim(axis);
-            return this->convert_ijk_to_voxel_axis_id(dimension);
+            //this->validate_request_axis(axis);
+            const auto coordinate_system = get_coordinate_system(axis, this->layout_);
+            return this->convert_ijk_to_voxel_axis_id(coordinate_system->axis_to_vds_dimension());
         }
 
         BoundingBox get_bounding_box() {
             return BoundingBox(*this->layout_);
         }
 
-        /*
-         * Convert target dimension/axis + lineno to VDS voxel coordinates.
-         */
-        VoxelBounds get_voxel_bounds(
-            const Axis ax,
-            const int lineno
-        ) const {
-            VoxelBounds voxel_bounds;
-            for (std::size_t i = 0; i < 3; ++i)
-                voxel_bounds.upper[i] = this->layout_->GetDimensionNumSamples(i);
-
-            int voxelline;
-            const int vdim = this->get_voxel_axis_id_of(ax);
-
-            const int system = axis_tosystem(ax);
-            switch (system) {
-                case ANNOTATION: {
-                    voxelline = lineno_annotation_to_voxel(lineno, vdim);
-                    break;
-                }
-                case INDEX: {
-                    voxelline = lineno_index_to_voxel(lineno, vdim);
-                    break;
-                }
-                case CDP:
-                default: {
-                    throw std::runtime_error("Unhandled coordinate system");
-                }
-            }
-
-            voxel_bounds.lower[vdim] = voxelline;
-            voxel_bounds.upper[vdim] = voxelline + 1;
-
-            return voxel_bounds;
-        }
-
-        void validate_request_axis( const Axis ax ) const {
-
-            const char* z_axis_unit
-                = layout_->GetDimensionUnit(VDSAxisID::DepthSampleTime);
-
-            const bool is_valid_axis_unit =
-                this->unit_validation(
-                    ax,
-                    z_axis_unit );
-
-            if (not is_valid_axis_unit) {
-                std::string msg = "Unable to use " + axis_tostring(ax);
-                msg += " on cube with depth units: " + std::string(z_axis_unit);
-                throw std::runtime_error(msg);
-            }
+        requestdata get_slice_of( const Axis axis, const int line_number ) {
+            const auto coordinate_system = get_coordinate_system(axis, this->layout_);
+            VoxelBounds vb = coordinate_system->get_slice_bounds_from( line_number, this->get_voxel_axis_id_of(axis) );
+            return this->request_volume_subset( std::move(vb) );
         }
 
         unique_ptr< float[][OpenVDS::Dimensionality_Max] >
@@ -641,11 +424,7 @@ struct requestdata fetch_slice(
     const int lineno
 ) {
     VDSHandle vds_handle(url, credentials);
-    vds_handle.validate_request_axis(ax);
-
-    VoxelBounds voxel_bounds = vds_handle.get_voxel_bounds(ax, lineno);
-
-    return vds_handle.request_volume_subset( voxel_bounds );
+    return vds_handle.get_slice_of( ax, lineno );
 }
 
 struct requestdata fetch_slice_metadata(
@@ -654,7 +433,6 @@ struct requestdata fetch_slice_metadata(
     const Axis ax
 ) {
     VDSHandle vds_handle(url, credentials);
-    vds_handle.validate_request_axis(ax);
 
     const int vdim = vds_handle.get_voxel_axis_id_of(ax);
 
