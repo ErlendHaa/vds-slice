@@ -236,6 +236,12 @@ class VDSHandle {
             validate_annotations_are_defined();
         }
 
+        int get_voxel_axis_id_of( const Axis axis ) const {
+            //this->validate_request_axis(axis);
+            const auto coordinate_system = get_coordinate_system(axis, this->layout_);
+            return this->convert_ijk_to_voxel_axis_id(coordinate_system->axis_to_vds_dimension());
+        }
+
     public:
 
         VDSHandle( std::string url, std::string credentials) {
@@ -273,25 +279,35 @@ class VDSHandle {
             return layout_->GetMetadataString(crs.GetCategory(), crs.GetName());
         }
 
-        nlohmann::json get_axis_metadata( const int voxel_dim ) const {
+        nlohmann::json get_axis_metadata( const Axis axis, const int requested_dimension ) const {
+            const int vdim = this->get_voxel_axis_id_of(axis);
+
+            //TODO: Make this nicer and more expressive
+            //We assemple an array of all dimensions that
+            std::vector< int > non_voxel_dimensions;
+            for (int i = 2; i >= 0; --i) {
+                if (i == vdim) continue;
+                non_voxel_dimensions.push_back(i);
+            }
+
+            const int mapped_id = non_voxel_dimensions[requested_dimension];
+
+            return get_axis_metadata( mapped_id );
+        }
+
+        nlohmann::json get_axis_metadata( const int requested_dimension ) const {
             return nlohmann::json {
-                { "annotation", layout_->GetDimensionName(voxel_dim)       },
-                { "min",        layout_->GetDimensionMin(voxel_dim)        },
-                { "max",        layout_->GetDimensionMax(voxel_dim)        },
-                { "samples",    layout_->GetDimensionNumSamples(voxel_dim) },
-                { "unit",       layout_->GetDimensionUnit(voxel_dim)       },
+                { "annotation", layout_->GetDimensionName(requested_dimension)       },
+                { "min",        layout_->GetDimensionMin(requested_dimension)        },
+                { "max",        layout_->GetDimensionMax(requested_dimension)        },
+                { "samples",    layout_->GetDimensionNumSamples(requested_dimension) },
+                { "unit",       layout_->GetDimensionUnit(requested_dimension)       },
             };
         }
 
         nlohmann::json get_shape_metadata( const int npoints ) const {
             return nlohmann::json::array({ npoints,
                                            layout_->GetDimensionNumSamples(VDSAxisID::DepthSampleTime)});
-        }
-
-        int get_voxel_axis_id_of( const Axis axis ) const {
-            //this->validate_request_axis(axis);
-            const auto coordinate_system = get_coordinate_system(axis, this->layout_);
-            return this->convert_ijk_to_voxel_axis_id(coordinate_system->axis_to_vds_dimension());
         }
 
         BoundingBox get_bounding_box() {
@@ -434,32 +450,11 @@ struct requestdata fetch_slice_metadata(
 ) {
     VDSHandle vds_handle(url, credentials);
 
-    const int vdim = vds_handle.get_voxel_axis_id_of(ax);
-
     nlohmann::json meta;
     meta["format"] = vds_handle.get_format_string_of_seismic_channel();
 
-    /*
-     * SEGYImport always writes annotation 'Sample' for axis K. We, on the
-     * other hand, decided that we base the valid input direction on the units
-     * of said axis. E.g. ms/s -> Time, etc. This leads to an inconsistency
-     * between what we require as input for axis K and what we return as
-     * metadata. In the ms/s case we require the input to be asked for in axis
-     * 'Time', but the return metadata can potentially say 'Sample'.
-     *
-     * TODO: Either revert the 'clever' unit validation, or patch the
-     * K-annotation here. IMO the later is too clever for it's own good and
-     * would be quite suprising for people that use this API in conjunction
-     * with the OpenVDS library.
-     */
-    std::vector< int > dims;
-    for (int i = 2; i >= 0; --i) {
-        if (i == vdim) continue;
-        dims.push_back(i);
-    }
-
-    meta["x"] = vds_handle.get_axis_metadata( dims[0] );
-    meta["y"] = vds_handle.get_axis_metadata( dims[1] );
+    meta["x"] = vds_handle.get_axis_metadata( ax, 0 );
+    meta["y"] = vds_handle.get_axis_metadata( ax, 1 );
 
     return requestdata_from_dump( meta.dump() );
 }
