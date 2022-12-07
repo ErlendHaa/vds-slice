@@ -37,6 +37,9 @@ enum VDSAxisID {
     Inline=2,
 };
 
+namespace constants {
+namespace annotation {
+
 struct AxisUnitCombination {
     const char* label;
     const std::vector<char const * const> units;
@@ -45,38 +48,13 @@ struct AxisUnitCombination {
     {}
 };
 
-class ValidZAxisCombinations {
-
-    private:
-        enum Index{
-            depth=0,
-            time=1,
-            sample=2
-        };
-
-        static const std::array<AxisUnitCombination, 3 > label_unit_combinations_;
-        static const std::array<char const* const, 3> axis_labels_;
-
-    public:
-        static const std::array<char const * const, 3>& axis_labels(){
-            return axis_labels_;
-        }
-
-        static const std::vector<char const * const>& depth_units() {
-            return label_unit_combinations_[Index::depth].units;
-        }
-
-        static const std::vector<char const * const>& time_units() {
-            return label_unit_combinations_[Index::time].units;
-        }
-
-        static const std::vector<char const * const>& sample_units() {
-            return label_unit_combinations_[Index::sample].units;
-        }
+enum Index{
+    depth=0,
+    time=1,
+    sample=2
 };
 
-/* Define some convenient lookup tables for labels and units */
-const std::array<AxisUnitCombination, 3 > ValidZAxisCombinations::label_unit_combinations_ {
+extern const std::array<AxisUnitCombination, 3 > label_unit_combinations{
     AxisUnitCombination(
         OpenVDS::KnownAxisNames::Depth(),
         std::vector<char const * const>{
@@ -100,11 +78,15 @@ const std::array<AxisUnitCombination, 3 > ValidZAxisCombinations::label_unit_com
     )
 };
 
-const std::array<char const * const, 3> ValidZAxisCombinations::axis_labels_ {
-    label_unit_combinations_[Index::depth].label,
-    label_unit_combinations_[Index::time].label,
-    label_unit_combinations_[Index::sample].label,
+extern const std::array<char const* const, 3> axis_labels{
+    label_unit_combinations[Index::depth].label,
+    label_unit_combinations[Index::time].label,
+    label_unit_combinations[Index::sample].label,
 };
+
+} //namespace annotation
+} //namespace constants
+
 
 requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
     requestdata tmp{ new char[dump.size()], nullptr, dump.size() };
@@ -346,6 +328,7 @@ class VDSHandle {
                 return !std::strcmp(x, zunit);
             };
 
+            using namespace constants::annotation;
             switch (ax) {
                 case I:
                 case J:
@@ -354,11 +337,11 @@ class VDSHandle {
                 case CROSSLINE:
                     return true;
                 case DEPTH:
-                    return std::any_of(ValidZAxisCombinations::depth_units().begin(), ValidZAxisCombinations::depth_units().end(), isoneof);
+                    return std::any_of(label_unit_combinations[Index::depth].units.begin(), label_unit_combinations[Index::depth].units.end(), isoneof);
                 case TIME:
-                    return std::any_of(ValidZAxisCombinations::time_units().begin(), ValidZAxisCombinations::time_units().end(), isoneof);
+                    return std::any_of(label_unit_combinations[Index::time].units.begin(), label_unit_combinations[Index::time].units.end(), isoneof);
                 case SAMPLE:
-                    return std::any_of(ValidZAxisCombinations::sample_units().begin(), ValidZAxisCombinations::sample_units().end(), isoneof);
+                    return std::any_of(label_unit_combinations[Index::sample].units.begin(), label_unit_combinations[Index::sample].units.end(), isoneof);
                 default: {
                     throw std::runtime_error("Unhandled axis");
                 }
@@ -398,8 +381,9 @@ class VDSHandle {
                 return !std::strcmp(x, z);
             };
 
-            if ( not std::any_of(ValidZAxisCombinations::axis_labels().begin(),
-                                 ValidZAxisCombinations::axis_labels().end(),
+            using namespace constants::annotation;
+            if ( not std::any_of(axis_labels.begin(),
+                                 axis_labels.end(),
                                  isoneof) )
             {
                 const char* actual_name = this->layout_->GetDimensionName(VDSAxisID::DepthSampleTime);
