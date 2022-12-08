@@ -229,6 +229,96 @@ class VDSHandle {
             return this->convert_ijk_to_voxel_axis_id(coordinate_system->axis_to_vds_dimension());
         }
 
+        requestdata request_volume_trace( const unique_ptr<float[][OpenVDS::Dimensionality_Max]> &coordinates,
+                                          const std::size_t npoints,
+                                          const InterpolationMethod interpolation_method ) {
+            // TODO: Verify that trace dimension is always 0
+            const std::size_t size = this->access_manager_.GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::Level0);
+
+            std::unique_ptr< char[] > data(new char[size]());
+
+            const auto request = access_manager_.RequestVolumeTraces(
+                    (float*)data.get(),
+                    size,
+                    OpenVDS::Dimensions_012,
+                    VDSLevelOfDetailID::Level0,
+                    seismic_channel_id_,
+                    coordinates.get(),
+                    npoints,
+                    to_interpolation(interpolation_method),
+                    0
+            );
+
+            return finalize_request( request, "Failed to fetch fence from VDS", data, size );
+        }
+
+        //TODO: Consider doing this function and splitting it into smaller parts.
+        unique_ptr< float[][OpenVDS::Dimensionality_Max] >
+        get_fence_request_coordinates( const enum CoordinateSystem coordinate_system,
+                                       const float* coordinates,
+                                       const size_t npoints,
+                                       const enum InterpolationMethod interpolation_method  ) const {
+            const OpenVDS::IntVector3 dimension_map =
+                this->layout_->GetVDSIJKGridDefinitionFromMetadata().dimensionMap;
+
+            unique_ptr< float[][OpenVDS::Dimensionality_Max] > coords(
+                new float[npoints][OpenVDS::Dimensionality_Max]{{0}}
+            );
+
+            // TODO: It would be really nice if this function
+            // could somehow live in the coordinate transformers
+            auto transform_coordinate = [&] (const float x, const float y) {
+                switch (coordinate_system) {
+                    case INDEX:
+                        return OpenVDS::Vector<double, 3> {x, y, 0};
+                    case ANNOTATION:
+                        return this->ijk_coordinate_transformer_.AnnotationToIJKPosition({x, y, 0});
+                    case CDP:
+                        return this->ijk_coordinate_transformer_.WorldToIJKPosition({x, y, 0});
+                    default: {
+                        throw std::runtime_error("Unhandled coordinate system");
+                    }
+                }
+            };
+
+            for (size_t i = 0; i < npoints; i++) {
+                const float x = *(coordinates++);
+                const float y = *(coordinates++);
+
+                auto coordinate = transform_coordinate(x, y);
+
+                auto validate_boundary = [&] (const int voxel) {
+                    const auto min = -0.5;
+                    const auto max = this->get_max_voxel_index( voxel ) - 0.5;
+                    if(coordinate[voxel] < min || coordinate[voxel] >= max) {
+                        const std::string coordinate_str =
+                            "(" +std::to_string(x) + "," + std::to_string(y) + ")";
+                        throw std::runtime_error(
+                            "Coordinate " + coordinate_str + " is out of boundaries "+
+                            "in dimension "+ std::to_string(voxel)+ "."
+                        );
+                    }
+                };
+
+                for (size_t dim = 0; dim < 2; ++dim) {
+                    validate_boundary(dim);
+
+                    /* openvds uses rounding down for Nearest interpolation.
+                    * As it is counterintuitive, we fix it by snapping to nearest index
+                    * and rounding half-up.
+                    */
+                    if (interpolation_method == NEAREST) {
+                        coordinate[dim] = std::round(coordinate[dim] + 1) - 1;
+                    }
+
+                    coords[i][dimension_map[dim]] = coordinate[dim];
+                }
+
+            }
+            return coords;
+        }
+
+
     public:
 
         VDSHandle( std::string url, std::string credentials) {
@@ -313,90 +403,17 @@ class VDSHandle {
             return this->request_volume_subset( std::move(vb) );
         }
 
-        unique_ptr< float[][OpenVDS::Dimensionality_Max] >
-        get_fence_request_coordinates( const enum CoordinateSystem coordinate_system,
-                                       const float* coordinates,
-                                       const size_t npoints,
-                                       const enum InterpolationMethod interpolation_method  ) const {
-            const OpenVDS::IntVector3 dimension_map =
-                this->layout_->GetVDSIJKGridDefinitionFromMetadata().dimensionMap;
+        requestdata get_fence_of( const enum CoordinateSystem coordinate_system,
+                                  const float* coordinates,
+                                  const size_t npoints,
+                                  const enum InterpolationMethod interpolation_method ) {
+            const auto request_coordinates =
+                this->get_fence_request_coordinates( coordinate_system,
+                                                     coordinates,
+                                                     npoints,
+                                                     interpolation_method);
 
-            unique_ptr< float[][OpenVDS::Dimensionality_Max] > coords(
-                new float[npoints][OpenVDS::Dimensionality_Max]{{0}}
-            );
-
-            auto transform_coordinate = [&] (const float x, const float y) {
-                switch (coordinate_system) {
-                    case INDEX:
-                        return OpenVDS::Vector<double, 3> {x, y, 0};
-                    case ANNOTATION:
-                        return this->ijk_coordinate_transformer_.AnnotationToIJKPosition({x, y, 0});
-                    case CDP:
-                        return this->ijk_coordinate_transformer_.WorldToIJKPosition({x, y, 0});
-                    default: {
-                        throw std::runtime_error("Unhandled coordinate system");
-                    }
-                }
-            };
-
-            for (size_t i = 0; i < npoints; i++) {
-                const float x = *(coordinates++);
-                const float y = *(coordinates++);
-
-                auto coordinate = transform_coordinate(x, y);
-
-                auto validate_boundary = [&] (const int voxel) {
-                    const auto min = -0.5;
-                    const auto max = this->get_max_voxel_index( voxel ) - 0.5;
-                    if(coordinate[voxel] < min || coordinate[voxel] >= max) {
-                        const std::string coordinate_str =
-                            "(" +std::to_string(x) + "," + std::to_string(y) + ")";
-                        throw std::runtime_error(
-                            "Coordinate " + coordinate_str + " is out of boundaries "+
-                            "in dimension "+ std::to_string(voxel)+ "."
-                        );
-                    }
-                };
-
-                for (size_t dim = 0; dim < 2; ++dim) {
-                    validate_boundary(dim);
-
-                    /* openvds uses rounding down for Nearest interpolation.
-                    * As it is counterintuitive, we fix it by snapping to nearest index
-                    * and rounding half-up.
-                    */
-                    if (interpolation_method == NEAREST) {
-                        coordinate[dim] = std::round(coordinate[dim] + 1) - 1;
-                    }
-
-                    coords[i][dimension_map[dim]] = coordinate[dim];
-                }
-
-            }
-            return coords;
-        }
-
-        requestdata request_volume_trace( const unique_ptr<float[][OpenVDS::Dimensionality_Max]> &coordinates,
-                                          const std::size_t npoints,
-                                          const InterpolationMethod interpolation_method ) {
-            // TODO: Verify that trace dimension is always 0
-            const std::size_t size = this->access_manager_.GetVolumeTracesBufferSize(npoints, VDSLevelOfDetailID::Level0);
-
-            std::unique_ptr< char[] > data(new char[size]());
-
-            const auto request = access_manager_.RequestVolumeTraces(
-                    (float*)data.get(),
-                    size,
-                    OpenVDS::Dimensions_012,
-                    VDSLevelOfDetailID::Level0,
-                    seismic_channel_id_,
-                    coordinates.get(),
-                    npoints,
-                    to_interpolation(interpolation_method),
-                    0
-            );
-
-            return finalize_request( request, "Failed to fetch fence from VDS", data, size );
+            return this->request_volume_trace( request_coordinates, npoints, interpolation_method );
         }
 
         requestdata request_volume_subset( const VoxelBounds& voxel_bounds ) {
@@ -461,14 +478,7 @@ struct requestdata fetch_fence(
     const enum InterpolationMethod interpolation_method
 ) {
     VDSHandle vds_handle(url, credentials);
-
-    const auto request_coordinates =
-        vds_handle.get_fence_request_coordinates( coordinate_system,
-                                                  coordinates,
-                                                  npoints,
-                                                  interpolation_method);
-
-    return vds_handle.request_volume_trace( request_coordinates, npoints, interpolation_method );
+    return vds_handle.get_fence_of( coordinate_system, coordinates, npoints, interpolation_method);
 }
 
 struct requestdata handle_error(
