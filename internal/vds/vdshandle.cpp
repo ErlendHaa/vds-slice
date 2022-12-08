@@ -22,18 +22,21 @@ static const std::unique_ptr<CoordinateToVDSVoxelTransformer> get_coordinate_sys
 } // namespace internal
 
 
-OpenVDS::InterpolationMethod VDSHandle::to_interpolation( const InterpolationMethod interpolation) {
-    switch (interpolation)
-    {
-        case NEAREST: return OpenVDS::InterpolationMethod::Nearest;
-        case LINEAR: return OpenVDS::InterpolationMethod::Linear;
-        case CUBIC: return OpenVDS::InterpolationMethod::Cubic;
-        case ANGULAR: return OpenVDS::InterpolationMethod::Angular;
-        case TRIANGULAR: return OpenVDS::InterpolationMethod::Triangular;
-        default: {
-            throw std::runtime_error("Unhandled interpolation method");
-        }
+OpenVDS::InterpolationMethod VDSHandle::to_interpolation(
+    const InterpolationMethod interpolation) {
+    switch (interpolation) {
+        case NEAREST:
+            return OpenVDS::InterpolationMethod::Nearest;
+        case LINEAR:
+            return OpenVDS::InterpolationMethod::Linear;
+        case CUBIC:
+            return OpenVDS::InterpolationMethod::Cubic;
+        case ANGULAR:
+            return OpenVDS::InterpolationMethod::Angular;
+        case TRIANGULAR:
+            return OpenVDS::InterpolationMethod::Triangular;
     }
+    throw std::runtime_error("Unhandled interpolation method");
 }
 
 int VDSHandle::convert_ijk_to_voxel_axis_id( const int ijk_axis_id ) const {
@@ -185,7 +188,7 @@ requestdata VDSHandle::request_volume_trace( const std::unique_ptr<float[][OpenV
     std::unique_ptr< char[] > data(new char[size]());
 
     const auto request = access_manager_.RequestVolumeTraces(
-            (float*)data.get(),
+            reinterpret_cast<float*>(data.get()),
             size,
             OpenVDS::Dimensions_012,
             VDSLevelOfDetailID::Level0,
@@ -221,11 +224,10 @@ VDSHandle::get_fence_request_coordinates( const enum CoordinateSystem coordinate
             case ANNOTATION:
                 return this->ijk_coordinate_transformer_.AnnotationToIJKPosition({x, y, 0});
             case CDP:
-                return this->ijk_coordinate_transformer_.WorldToIJKPosition({x, y, 0});
-            default: {
-                throw std::runtime_error("Unhandled coordinate system");
-            }
+                return this->ijk_coordinate_transformer_.WorldToIJKPosition(
+                    {x, y, 0});
         }
+        throw std::runtime_error("Unhandled coordinate system");
     };
 
     for (size_t i = 0; i < npoints; i++) {
@@ -234,7 +236,7 @@ VDSHandle::get_fence_request_coordinates( const enum CoordinateSystem coordinate
 
         auto coordinate = transform_coordinate(x, y);
 
-        auto validate_boundary = [&] (const int voxel) {
+        auto validate_boundary = [&](const std::size_t voxel) {
             const auto min = -0.5;
             const auto max = this->get_max_voxel_index( voxel ) - 0.5;
             if(coordinate[voxel] < min || coordinate[voxel] >= max) {
@@ -258,7 +260,7 @@ VDSHandle::get_fence_request_coordinates( const enum CoordinateSystem coordinate
                 coordinate[dim] = std::round(coordinate[dim] + 1) - 1;
             }
 
-            coords[i][dimension_map[dim]] = coordinate[dim];
+            coords[i][dimension_map[dim]] = static_cast<float>(coordinate[dim]);
         }
 
     }
@@ -286,12 +288,18 @@ std::string VDSHandle::get_format_string_of_seismic_channel() const {
     using namespace OpenVDS;
     const VolumeDataFormat format = layout_->GetChannelFormat(seismic_channel_id_);
     switch (format) {
-        case OpenVDS::VolumeDataFormat::Format_U8:  return "<u1";
-        case OpenVDS::VolumeDataFormat::Format_U16: return "<u2";
-        case OpenVDS::VolumeDataFormat::Format_R32: return "<f4";
-        default: {
+        case OpenVDS::VolumeDataFormat::Format_U8:
+            return "<u1";
+        case OpenVDS::VolumeDataFormat::Format_U16:
+            return "<u2";
+        case OpenVDS::VolumeDataFormat::Format_R32:
+            return "<f4";
+        case OpenVDS::VolumeDataFormat::Format_Any:
+        case OpenVDS::VolumeDataFormat::Format_1Bit:
+        case OpenVDS::VolumeDataFormat::Format_U32:
+        case OpenVDS::VolumeDataFormat::Format_U64:
+        case OpenVDS::VolumeDataFormat::Format_R64:
             throw std::runtime_error("unsupported VDS format type");
-        }
     }
 }
 
