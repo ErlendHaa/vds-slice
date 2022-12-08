@@ -24,11 +24,6 @@ using namespace std;
 
 namespace internal {
 
-enum VDSLevelOfDetailID {
-    Level0 = 0
-};
-
-
 static const std::unique_ptr<CoordinateToVDSVoxelTransformer> get_coordinate_system( const Axis axis,
                                                                                 OpenVDS::VolumeDataLayout const * vds_layout_)  {
     switch (axis) {
@@ -114,6 +109,11 @@ std::vector< std::pair<int, int> > BoundingBox::annotation() const noexcept (tru
 class VDSHandle {
 
     private:
+
+        enum VDSLevelOfDetailID {
+            Level0 = 0
+        };
+
         OpenVDS::ScopedVDSHandle handle_;
         OpenVDS::Error error_;
         OpenVDS::VolumeDataAccessManager access_manager_;
