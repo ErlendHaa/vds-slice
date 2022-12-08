@@ -9,7 +9,7 @@ namespace internal {
 namespace constants {
 namespace annotation {
 
-const std::array<AxisUnitCombination, 3 > label_unit_combinations{
+const std::array<const AxisUnitCombination, 3> label_unit_combinations{
     AxisUnitCombination(
         OpenVDS::KnownAxisNames::Depth(),
         std::vector<char const * const>{
@@ -46,11 +46,11 @@ const std::array<char const* const, 3> axis_labels{
 /*
  * class CoordinateToVDSVoxelTransformer
  */
-CoordinateToVDSVoxelTransformer::CoordinateToVDSVoxelTransformer( const Axis axis,
-                                    OpenVDS::VolumeDataLayout const * vds_layout_,
-                                    const CoordinateSystem coordinate_system_label ) :
-    coordinate_system_label_(coordinate_system_label), axis_(axis) {
-
+CoordinateToVDSVoxelTransformer::CoordinateToVDSVoxelTransformer(
+    const Axis axis,
+    OpenVDS::VolumeDataLayout const* vds_layout_,
+    const CoordinateSystem coordinate_system_label)
+    : coordinate_system_label_(coordinate_system_label), axis_(axis) {
     for (std::size_t i = 0; i < 3; ++i) {
         this->voxel_limits_.upper[i] = vds_layout_->GetDimensionNumSamples(i);
     }
@@ -104,9 +104,13 @@ int IndexToVDSVoxel::axis_to_vds_dimension() const {
             return 1;
         case Axis::K:
             return 2;
-        default: {
-            throw std::runtime_error("IndexToVDSVoxel: Unhandled axis  " + std::to_string(this->axis_));
-        }
+        case Axis::INLINE:
+        case Axis::CROSSLINE:
+        case Axis::DEPTH:
+        case Axis::TIME:
+        case Axis::SAMPLE:
+            throw std::runtime_error("IndexToVDSVoxel: Unhandled axis  " +
+                                     std::to_string(this->axis_));
     }
 }
 
@@ -118,17 +122,20 @@ IndexToVDSVoxel::~IndexToVDSVoxel() {}
  */
 const std::string AnnotationToVDSVoxel::axis_tostring(const Axis ax) {
     switch (ax) {
-        //case I:         return std::string( OpenVDS::KnownAxisNames::I()         );
-        //case J:         return std::string( OpenVDS::KnownAxisNames::J()         );
-        //case K:         return std::string( OpenVDS::KnownAxisNames::K()         );
-        case INLINE:    return std::string( OpenVDS::KnownAxisNames::Inline()    );
-        case CROSSLINE: return std::string( OpenVDS::KnownAxisNames::Crossline() );
-        case DEPTH:     return std::string( OpenVDS::KnownAxisNames::Depth()     );
-        case TIME:      return std::string( OpenVDS::KnownAxisNames::Time()      );
-        case SAMPLE:    return std::string( OpenVDS::KnownAxisNames::Sample()    );
-        default: {
+        case Axis::INLINE:
+            return std::string(OpenVDS::KnownAxisNames::Inline());
+        case Axis::CROSSLINE:
+            return std::string(OpenVDS::KnownAxisNames::Crossline());
+        case Axis::DEPTH:
+            return std::string(OpenVDS::KnownAxisNames::Depth());
+        case Axis::TIME:
+            return std::string(OpenVDS::KnownAxisNames::Time());
+        case Axis::SAMPLE:
+            return std::string(OpenVDS::KnownAxisNames::Sample());
+        case Axis::I:
+        case Axis::J:
+        case Axis::K:
             throw std::runtime_error("Unhandled axis");
-        }
     }
 }
 
@@ -142,21 +149,30 @@ void AnnotationToVDSVoxel::validate_units_of_z_axis() const {
     bool is_valid_axis_unit = false;
     using namespace constants::annotation;
     switch (this->axis_) {
-        case DEPTH:
-            is_valid_axis_unit = std::any_of(label_unit_combinations[Index::depth].units.begin(), label_unit_combinations[Index::depth].units.end(), isoneof);
+        case Axis::DEPTH:
+            is_valid_axis_unit = std::any_of(
+                label_unit_combinations[Index::depth].units.begin(),
+                label_unit_combinations[Index::depth].units.end(), isoneof);
             break;
-        case TIME:
-            is_valid_axis_unit = std::any_of(label_unit_combinations[Index::time].units.begin(), label_unit_combinations[Index::time].units.end(), isoneof);
+        case Axis::TIME:
+            is_valid_axis_unit = std::any_of(
+                label_unit_combinations[Index::time].units.begin(),
+                label_unit_combinations[Index::time].units.end(), isoneof);
             break;
-        case SAMPLE:
-            is_valid_axis_unit = std::any_of(label_unit_combinations[Index::sample].units.begin(), label_unit_combinations[Index::sample].units.end(), isoneof);
+        case Axis::SAMPLE:
+            is_valid_axis_unit = std::any_of(
+                label_unit_combinations[Index::sample].units.begin(),
+                label_unit_combinations[Index::sample].units.end(), isoneof);
             break;
-        case CROSSLINE:
-        case INLINE:
+        case Axis::CROSSLINE:
+        case Axis::INLINE:
             is_valid_axis_unit = true;
             break;
-        default:
-            //TODO: This case should never happen. Verify thins and potentially update/improve code.
+        case Axis::I:
+        case Axis::J:
+        case Axis::K:
+            // TODO: This case should never happen. Verify thins and potentially
+            // update/improve code.
             throw std::runtime_error("AnnotationToVDSVoxel: Unhandled axis");
     }
 
@@ -167,10 +183,13 @@ void AnnotationToVDSVoxel::validate_units_of_z_axis() const {
     }
 }
 
-AnnotationToVDSVoxel::AnnotationToVDSVoxel(const Axis axis,
-                        OpenVDS::VolumeDataLayout const * vds_layout_) :
-    CoordinateToVDSVoxelTransformer(axis, vds_layout_, CoordinateSystem::ANNOTATION) {
-    for (std::size_t i = 0; i<3; ++i) {
+AnnotationToVDSVoxel::AnnotationToVDSVoxel(
+    const Axis axis,
+    OpenVDS::VolumeDataLayout const* vds_layout_)
+    : CoordinateToVDSVoxelTransformer(axis,
+                                      vds_layout_,
+                                      CoordinateSystem::ANNOTATION) {
+    for (std::size_t i = 0; i < 3; ++i) {
         dimensions_min_[i] = vds_layout_->GetDimensionMin(i);
         dimensions_max_[i] = vds_layout_->GetDimensionMax(i);
     }
@@ -217,9 +236,11 @@ int AnnotationToVDSVoxel::axis_to_vds_dimension() const {
         case Axis::TIME:
         case Axis::SAMPLE:
             return 2;
-        default: {
-            throw std::runtime_error("AnnotationToVDSVoxel: Unhandled axis " + std::to_string(this->axis_));
-        }
+        case Axis::I:
+        case Axis::J:
+        case Axis::K:
+            throw std::runtime_error("AnnotationToVDSVoxel: Unhandled axis " +
+                                     std::to_string(this->axis_));
     }
 }
 

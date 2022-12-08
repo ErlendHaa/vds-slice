@@ -39,7 +39,7 @@ struct AxisUnitCombination {
     {}
 };
 
-extern const std::array<AxisUnitCombination, 3 > label_unit_combinations;
+extern const std::array<const AxisUnitCombination, 3> label_unit_combinations;
 extern const std::array<char const* const, 3> axis_labels;
 
 } //namespace annotation
