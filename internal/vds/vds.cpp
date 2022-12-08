@@ -24,6 +24,10 @@ using namespace std;
 
 namespace internal {
 
+// Aliased types
+using IntPointList = std::vector<std::pair<int, int > >;
+using DoublePointList = std::vector<std::pair<double, double> >;
+
 static const std::unique_ptr<CoordinateToVDSVoxelTransformer> get_coordinate_system( const Axis axis,
                                                                                 OpenVDS::VolumeDataLayout const * vds_layout_)  {
     switch (axis) {
@@ -48,62 +52,10 @@ requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
     return tmp;
 }
 
-
-class BoundingBox {
-public:
-    explicit BoundingBox(
-        const OpenVDS::VolumeDataLayout &layout
-    ) : layout(layout)
-    {
-        transformer = OpenVDS::IJKCoordinateTransformer(&layout);
-    }
-
-    std::vector< std::pair<int, int> >       index()      const noexcept (true);
-    std::vector< std::pair<int, int> >       annotation() const noexcept (true);
-    std::vector< std::pair<double, double> > world()      const noexcept (true);
-private:
-    OpenVDS::IJKCoordinateTransformer transformer;
-    const OpenVDS::VolumeDataLayout &layout;
-};
-
-
-std::vector< std::pair<int, int> > BoundingBox::index() const noexcept (true) {
-    const auto ils = layout.GetDimensionNumSamples(VDSAxisID::Inline) - 1;
-    const auto xls = layout.GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
-
-    return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
-}
-
-std::vector< std::pair<double, double> > BoundingBox::world() const noexcept (true) {
-    std::vector< std::pair<double, double> > world_points;
-
-    const auto points = this->index();
-    std::for_each(points.begin(), points.end(),
-        [&](const std::pair<int, int>& point) {
-            const auto p = this->transformer.IJKIndexToWorld(
-                { point.first, point.second, 0 }
-            );
-            world_points.emplace_back(p[0], p[1]);
-        }
-    );
-
-    return world_points;
-};
-
-std::vector< std::pair<int, int> > BoundingBox::annotation() const noexcept (true) {
-    auto points = this->index();
-    std::transform(points.begin(), points.end(), points.begin(),
-        [this](const std::pair<int, int>& point) {
-            auto anno = this->transformer.IJKIndexToAnnotation({
-                point.first,
-                point.second,
-                0
-            });
-            return std::pair<int, int>{anno[0], anno[1]};
-        }
-    );
-
-    return points;
+struct BoundingBox {
+    IntPointList       index;
+    IntPointList       annotation;
+    DoublePointList world;
 };
 
 class VDSHandle {
@@ -236,6 +188,41 @@ class VDSHandle {
             validate_annotations_are_defined();
         }
 
+        IntPointList get_bounding_box_in_index_coordinates() {
+            const int ils = this->layout_->GetDimensionNumSamples(VDSAxisID::Inline)    - 1;
+            const int xls = this->layout_->GetDimensionNumSamples(VDSAxisID::Crossline) - 1;
+
+            return { {0, 0}, {ils, 0}, {ils, xls}, {0, xls} };
+        }
+
+        DoublePointList convert_ijk_to_world( const IntPointList& points_as_ijk ) {
+            DoublePointList tmp;
+            std::for_each(points_as_ijk.begin(), points_as_ijk.end(),
+            [this, &tmp](const std::pair<int, int>& point) {
+                const auto p = this->ijk_coordinate_transformer_.IJKIndexToWorld(
+                    { point.first, point.second, 0 }
+                );
+                    tmp.emplace_back(p[0], p[1]);
+                }
+            );
+            return tmp;
+        }
+
+        IntPointList convert_ijk_to_annotation( const IntPointList& points_as_ijk ) {
+            IntPointList tmp = points_as_ijk;
+            std::transform(tmp.begin(), tmp.end(), tmp.begin(),
+               [this](const std::pair<int, int>& point) {
+                   auto anno = this->ijk_coordinate_transformer_.IJKIndexToAnnotation({
+                       point.first,
+                       point.second,
+                       0
+                   });
+                   return std::pair<int, int>{anno[0], anno[1]};
+               }
+           );
+            return tmp;
+        }
+
         int get_voxel_axis_id_of( const Axis axis ) const {
             //this->validate_request_axis(axis);
             const auto coordinate_system = get_coordinate_system(axis, this->layout_);
@@ -311,7 +298,13 @@ class VDSHandle {
         }
 
         BoundingBox get_bounding_box() {
-            return BoundingBox(*this->layout_);
+            BoundingBox bounding_box;
+
+            bounding_box.index = this->get_bounding_box_in_index_coordinates();
+            bounding_box.annotation = this->convert_ijk_to_annotation( bounding_box.index );
+            bounding_box.world = this->convert_ijk_to_world( bounding_box.index );
+
+            return bounding_box;
         }
 
         requestdata get_slice_of( const Axis axis, const int line_number ) {
@@ -498,9 +491,9 @@ struct requestdata metadata(
     meta["crs"] = vds_handle.get_crs_string();
 
     const auto bbox = vds_handle.get_bounding_box();
-    meta["boundingBox"]["ij"]   = bbox.index();
-    meta["boundingBox"]["cdp"]  = bbox.world();
-    meta["boundingBox"]["ilxl"] = bbox.annotation();
+    meta["boundingBox"]["ij"]   = bbox.index;
+    meta["boundingBox"]["cdp"]  = bbox.world;
+    meta["boundingBox"]["ilxl"] = bbox.annotation;
 
     for (int i = 2; i >= 0 ; i--) {
         meta["axis"].push_back( vds_handle.get_axis_metadata( i ) );
