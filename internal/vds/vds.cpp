@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cassert>
 #include <array>
 #include <algorithm>
 #include <string>
@@ -20,13 +21,14 @@ using namespace std;
 
 namespace internal {
 
-requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
+// Helper functions
+static requestdata requestdata_from_dump( const nlohmann::json::string_t& dump ) {
     requestdata tmp{ new char[dump.size()], nullptr, dump.size() };
     std::copy(dump.begin(), dump.end(), tmp.data);
     return tmp;
 }
 
-struct requestdata fetch_slice(
+static struct requestdata fetch_slice(
     const std::string url,
     const std::string credentials,
     const Axis ax,
@@ -36,7 +38,7 @@ struct requestdata fetch_slice(
     return vds_handle.get_slice_of( ax, lineno );
 }
 
-struct requestdata fetch_slice_metadata(
+static struct requestdata fetch_slice_metadata(
     const std::string url,
     const std::string credentials,
     const Axis ax
@@ -52,7 +54,7 @@ struct requestdata fetch_slice_metadata(
     return requestdata_from_dump( meta.dump() );
 }
 
-struct requestdata fetch_fence(
+static struct requestdata fetch_fence(
     const std::string& url,
     const std::string& credentials,
     const enum CoordinateSystem coordinate_system,
@@ -64,7 +66,7 @@ struct requestdata fetch_fence(
     return vds_handle.get_fence_of( coordinate_system, coordinates, npoints, interpolation_method);
 }
 
-struct requestdata handle_error(
+static struct requestdata handle_error(
     const std::exception& e
 ) {
     requestdata buf {};
@@ -73,7 +75,7 @@ struct requestdata handle_error(
     return buf;
 }
 
-struct requestdata metadata(
+static struct requestdata metadata(
     const std::string& url,
     const std::string& credentials
 ) {
@@ -94,7 +96,7 @@ struct requestdata metadata(
     return internal::requestdata_from_dump( meta.dump() );
 }
 
-struct requestdata fetch_fence_metadata(
+static struct requestdata fetch_fence_metadata(
     const std::string url,
     const std::string credentials,
     const size_t npoints
@@ -102,7 +104,9 @@ struct requestdata fetch_fence_metadata(
     VDSHandle vds_handle(url, credentials);
 
     nlohmann::json meta;
-    meta["shape"] = vds_handle.get_shape_metadata(npoints);
+
+    assert(npoints < std::numeric_limits<int>::max());
+    meta["shape"] = vds_handle.get_shape_metadata(static_cast<int>(npoints));
     meta["format"] = vds_handle.get_format_string_of_seismic_channel();
 
     return internal::requestdata_from_dump( meta.dump() );
