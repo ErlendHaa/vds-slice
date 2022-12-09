@@ -37,38 +37,28 @@ enum InterpolationMethod {
     TRIANGULAR
 };
 
-struct requestdata metadata(
-    char const * const vds,
-    char const * const credentials
-);
+struct requestdata metadata(char const* const connection_url,
+                            char const* const credentials);
 
-struct requestdata slice(
-    char const * const vds,
-    char const * const credentials,
-    const int lineno,
-    const enum Axis direction
-);
+struct requestdata slice(char const* const connection_url,
+                         char const* const credentials,
+                         const int lineno,
+                         const enum Axis direction);
 
-struct requestdata slice_metadata(
-    char const * const vds,
-    char const * const credentials,
-    const enum Axis direction
-);
+struct requestdata slice_metadata(char const* const connection_url,
+                                  char const* const credentials,
+                                  const enum Axis direction);
 
-struct requestdata fence(
-    char const * const vds,
-    char const * const credentials,
-    const enum CoordinateSystem coordinate_system,
-    float const * const points,
-    const size_t npoints,
-    const enum InterpolationMethod interpolation_method
-);
+struct requestdata fence(char const* const connection_url,
+                         char const* const credentials,
+                         const enum CoordinateSystem coordinate_system,
+                         float const* const points,
+                         const size_t npoints,
+                         const enum InterpolationMethod interpolation_method);
 
-struct requestdata fence_metadata(
-    char const * const vds,
-    char const * const credentials,
-    const size_t npoints
-);
+struct requestdata fence_metadata(char const* const connection_url,
+                                  char const* const credentials,
+                                  const size_t npoints);
 
 void requestdata_delete(struct requestdata*);
 

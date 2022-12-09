@@ -114,14 +114,11 @@ struct requestdata fetch_fence_metadata(
  * Below here the interface methods are defined.
  */
 
-
-struct requestdata slice(
-    char const * const vds,
-    char const * const credentials,
-    const int lineno,
-    const Axis ax
-) {
-    const std::string cube(vds);
+struct requestdata slice(char const* const connection_url,
+                         char const* const credentials,
+                         const int lineno,
+                         const Axis ax) {
+    const std::string cube(connection_url);
     const std::string cred(credentials);
 
     try {
@@ -131,12 +128,10 @@ struct requestdata slice(
     }
 }
 
-struct requestdata slice_metadata(
-    char const * const vds,
-    char const * const credentials,
-    const Axis ax
-) {
-    const std::string cube(vds);
+struct requestdata slice_metadata(char const* const connection_url,
+                                  char const* const credentials,
+                                  const Axis ax) {
+    const std::string cube(connection_url);
     const std::string cred(credentials);
 
     try {
@@ -146,15 +141,13 @@ struct requestdata slice_metadata(
     }
 }
 
-struct requestdata fence(
-    char const * const vds,
-    char const * const credentials,
-    const enum CoordinateSystem coordinate_system,
-    float const * const coordinates,
-    const size_t npoints,
-    const enum InterpolationMethod interpolation_method
-) {
-    const std::string cube(vds);
+struct requestdata fence(char const* const connection_url,
+                         char const* const credentials,
+                         const enum CoordinateSystem coordinate_system,
+                         float const* const coordinates,
+                         const size_t npoints,
+                         const enum InterpolationMethod interpolation_method) {
+    const std::string cube(connection_url);
     const std::string cred(credentials);
 
     try {
@@ -166,12 +159,10 @@ struct requestdata fence(
     }
 }
 
-struct requestdata fence_metadata(
-    char const * const vds,
-    char const * const credentials,
-    const size_t npoints
-) {
-    const std::string cube(vds);
+struct requestdata fence_metadata(char const* const connection_url,
+                                  char const* const credentials,
+                                  const size_t npoints) {
+    const std::string cube(connection_url);
     const std::string cred(credentials);
 
     try {
@@ -181,12 +172,10 @@ struct requestdata fence_metadata(
     }
 }
 
-struct requestdata metadata(
-    char const * const vds,
-    char const * const credentials
-) {
+struct requestdata metadata(char const* const connection_url,
+                            char const* const credentials) {
     try {
-        const std::string cube(vds);
+        const std::string cube(connection_url);
         const std::string cred(credentials);
         return internal::metadata(cube, cred);
     } catch (const std::exception& e) {
