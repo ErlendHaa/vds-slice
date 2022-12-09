@@ -70,11 +70,11 @@ class VDSHandle {
 
         void validate_data_store() const;
 
-        IntPointList get_bounding_box_in_index_coordinates();
+    IntPointList get_bounding_box_in_index_coordinates() const;
 
-        DoublePointList convert_ijk_to_world( const IntPointList& points_as_ijk );
+    DoublePointList convert_ijk_to_world(const IntPointList& points_as_ijk) const;
 
-        IntPointList convert_ijk_to_annotation( const IntPointList& points_as_ijk );
+    IntPointList convert_ijk_to_annotation(const IntPointList& points_as_ijk) const;
 
         int get_voxel_axis_id_of( const Axis axis ) const;
 
@@ -102,7 +102,7 @@ class VDSHandle {
 
         nlohmann::json get_shape_metadata( const int npoints ) const;
 
-        BoundingBox get_bounding_box();
+        BoundingBox get_bounding_box() const;
 
         requestdata get_slice_of( const Axis axis, const int line_number );
 
