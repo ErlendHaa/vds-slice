@@ -156,7 +156,7 @@ func GetInterpolationMethod(interpolation string) (int, error) {
 	}
 }
 
-func GetMetadata(conn Connection) ([]byte, error) {
+func GetMetadata(conn ResourceConnection) ([]byte, error) {
 	curl := C.CString(conn.Url())
 	defer C.free(unsafe.Pointer(curl))
 
@@ -176,7 +176,7 @@ func GetMetadata(conn Connection) ([]byte, error) {
 	return buf, nil
 }
 
-func GetSlice(conn Connection, lineno, direction int) ([]byte, error) {
+func GetSlice(conn ResourceConnection, lineno, direction int) ([]byte, error) {
 	curl := C.CString(conn.Url())
 	defer C.free(unsafe.Pointer(curl))
 
@@ -201,7 +201,11 @@ func GetSlice(conn Connection, lineno, direction int) ([]byte, error) {
 	return buf, nil
 }
 
-func GetSliceMetadata(conn Connection, lineno, direction int) ([]byte, error) {
+func GetSliceMetadata(
+	conn ResourceConnection,
+	lineno int,
+	direction int,
+) ([]byte, error) {
 	curl := C.CString(conn.Url())
 	defer C.free(unsafe.Pointer(curl))
 
@@ -227,7 +231,7 @@ func GetSliceMetadata(conn Connection, lineno, direction int) ([]byte, error) {
 }
 
 func GetFence(
-	conn Connection,
+	conn ResourceConnection,
 	coordinateSystem int,
 	coordinates [][]float32,
 	interpolation int,
@@ -276,7 +280,10 @@ func GetFence(
 	return buf, nil
 }
 
-func GetFenceMetadata(conn Connection, coordinates [][]float32) ([]byte, error) {
+func GetFenceMetadata(
+	conn ResourceConnection,
+	coordinates [][]float32,
+) ([]byte, error) {
 	curl := C.CString(conn.Url())
 	defer C.free(unsafe.Pointer(curl))
 

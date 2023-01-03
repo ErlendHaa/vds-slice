@@ -569,7 +569,7 @@ func TestMetadataErrorHTTPResponse(t *testing.T) {
 }
 
 func MakeFileConnection() vds.ConnectionMaker {
-	return func(path, sas string) (vds.Connection, error) {
+	return func(path, sas string) (vds.ResourceConnection, error) {
 		path = fmt.Sprintf("file://%s", path)
 		return vds.NewFileConnection(path), nil
 	}

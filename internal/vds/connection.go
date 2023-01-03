@@ -48,7 +48,7 @@ func validateSasSrt(connection *AzureConnection) error {
 	)
 }
 
-type Connection interface {
+type ResourceConnection interface {
 	Url()              string
 	ConnectionString() string
 }
@@ -138,7 +138,7 @@ func splitAzureUrl(path string) (string, string) {
 	return container, blobPath
 }
 
-type ConnectionMaker func(blob, sas string) (Connection, error)
+type ConnectionMaker func(blob, sas string) (ResourceConnection, error)
 
 func MakeAzureConnection(accounts []string) ConnectionMaker {
 	var allowlist []*url.URL
@@ -155,7 +155,7 @@ func MakeAzureConnection(accounts []string) ConnectionMaker {
 		allowlist = append(allowlist, url)
 	}
 
-	return func(blob string, sas string) (Connection, error) {
+	return func(blob string, sas string) (ResourceConnection, error) {
 		blobUrl, err := makeUrl(blob)
 		if err != nil {
 			return nil, err

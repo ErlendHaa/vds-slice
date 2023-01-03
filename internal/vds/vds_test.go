@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func make_connection(name string) Connection {
+func make_connection(name string) ResourceConnection {
 	path := fmt.Sprintf("../../testdata/%s/%s_default.vds", name, name)
 	path = fmt.Sprintf("file://%s", path)
 	return NewFileConnection(path)
