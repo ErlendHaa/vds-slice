@@ -24,7 +24,7 @@ func srtContainsContainer(srt string) bool {
  * SAS use Signed Resource (sr). In that case there is nothing to check for and
  * this function will return nil.
  */
-func validateSasSrt(connection *AzureConnection) error {
+func validateSasSrt(connection *AzureResourceConnection) error {
 	query, err := url.ParseQuery(connection.sas)
 	if err != nil {
 		return fmt.Errorf(
@@ -53,18 +53,18 @@ type ResourceConnection interface {
 	ConnectionString() string
 }
 
-type AzureConnection struct {
+type AzureResourceConnection struct {
 	blobPath  string
 	container string
 	host      string
 	sas       string
 }
 
-func (c *AzureConnection) Url() string {
+func (c *AzureResourceConnection) Url() string {
 	return fmt.Sprintf("azure://%s/%s", c.container, c.blobPath)
 }
 
-func (c *AzureConnection) ConnectionString() string {
+func (c *AzureResourceConnection) ConnectionString() string {
 	return fmt.Sprintf("BlobEndpoint=https://%s;SharedAccessSignature=?%s",
 		c.host,
 		c.sas,
@@ -76,8 +76,8 @@ func NewAzureConnection(
 	container string,
 	host      string,
 	sas       string,
-) *AzureConnection {
-	return &AzureConnection{
+) *AzureResourceConnection {
+	return &AzureResourceConnection{
 		blobPath:  blobPath,
 		container: container,
 		host:      host,
