@@ -12,11 +12,11 @@ import (
 )
 
 type Endpoint struct {
-	MakeVdsConnection vds.ResourceConnectionMaker
+	MakeResourceConnection vds.ResourceConnectionMaker
 }
 
 func (e *Endpoint) metadata(ctx *gin.Context, request MetadataRequest) {
-	conn, err := e.MakeVdsConnection(request.Vds, request.Sas)
+	conn, err := e.MakeResourceConnection(request.Vds, request.Sas)
 	if err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
@@ -32,7 +32,7 @@ func (e *Endpoint) metadata(ctx *gin.Context, request MetadataRequest) {
 }
 
 func (e *Endpoint) slice(ctx *gin.Context, request SliceRequest) {
-	conn, err := e.MakeVdsConnection(request.Vds, request.Sas)
+	conn, err := e.MakeResourceConnection(request.Vds, request.Sas)
 	if err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
@@ -59,7 +59,7 @@ func (e *Endpoint) slice(ctx *gin.Context, request SliceRequest) {
 }
 
 func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
-	conn, err := e.MakeVdsConnection(request.Vds, request.Sas)
+	conn, err := e.MakeResourceConnection(request.Vds, request.Sas)
 	if err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return

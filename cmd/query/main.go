@@ -66,7 +66,7 @@ func main() {
 	
 	storageAccounts := strings.Split(opts.storageAccounts, ",")
 	endpoint := api.Endpoint{
-		MakeVdsConnection: vds.MakeAzureRecourceConnection(storageAccounts),
+		MakeResourceConnection: vds.MakeAzureRecourceConnection(storageAccounts),
 	}
 
 	app := gin.Default()

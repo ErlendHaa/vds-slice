@@ -577,7 +577,7 @@ func MakeFileConnection() vds.ResourceConnectionMaker {
 
 func setupTestServer(r *gin.Engine) {
 	r.Use(gin.Logger())
-	endpoint := Endpoint{ MakeVdsConnection: MakeFileConnection() }
+	endpoint := Endpoint{ MakeResourceConnection: MakeFileConnection() }
 
 	r.POST("/slice", ErrorHandler, endpoint.SlicePost)
 	r.GET("/slice", ErrorHandler, endpoint.SliceGet)
