@@ -12,7 +12,7 @@ import (
 )
 
 type Endpoint struct {
-	MakeVdsConnection vds.ConnectionMaker
+	MakeVdsConnection vds.ResourceConnectionMaker
 }
 
 func (e *Endpoint) metadata(ctx *gin.Context, request MetadataRequest) {
