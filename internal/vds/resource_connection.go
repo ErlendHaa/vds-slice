@@ -140,7 +140,7 @@ func splitAzureUrl(path string) (string, string) {
 
 type ResourceConnectionMaker func(blob, sas string) (ResourceConnection, error)
 
-func MakeAzureConnection(accounts []string) ResourceConnectionMaker {
+func MakeAzureRecourceConnection(accounts []string) ResourceConnectionMaker {
 	var allowlist []*url.URL
 	for _, account := range accounts {
 		account = strings.TrimSpace(account)
