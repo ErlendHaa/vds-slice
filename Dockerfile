@@ -14,10 +14,15 @@ RUN apk --no-cache add \
     libuv-dev \
     util-linux-dev
 
+RUN git clone https://github.com/facebook/zstd.git
+WORKDIR zstd/build/cmake
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+RUN cmake --build build --target install --config Release
+
 WORKDIR /
-RUN git clone https://community.opengroup.org/osdu/platform/domain-data-mgmt-services/seismic/open-vds.git
+RUN git clone https://community.opengroup.org/erha/open-vds.git
 WORKDIR /open-vds
-RUN git checkout cbcd7b6163768118805dbcd080a5b0e386b82a6a
+RUN git checkout lossless-compression
 
 RUN cmake -S . \
     -B build \
