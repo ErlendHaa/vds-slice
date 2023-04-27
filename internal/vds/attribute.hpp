@@ -117,21 +117,6 @@ private:
 
 /**
  * A Window is defined as some area around a reference point.
- *
- *       - top = ref - 4
- *       |
- *       |
- *       |
- *       x ref
- *       |
- *       |
- *       - bottom = ref + 2
- *
- * TODO: This can be dynamic based on ref. I.e. if ref is the interval [0, 0.5>
- *       between to samples, we need an extra sample up, while if ref is in the
- *       interval [0.5, 1> between samples, we need and extra sample downwards.
- *       Size is always the same, but it differs on whether the extra sample is
- *       needed above or below.
  */
 struct Window {
     Window(float up, float down, float samplerate)
@@ -140,16 +125,11 @@ struct Window {
         // Verify that consistency
     }
 
-    // New method set
     float distance_up() const { return this->m_up; }
     float distance_down() const { return this->m_down; }
 
     float samples_up()   const { return this->m_up   / this->m_samplerate; }
     float samples_down() const { return this->m_down / this->m_samplerate; }
-
-    //TODO do we want these?
-    float first(float ref) const { return ref - this->distance_up(); }
-    float  last(float ref) const { return ref + this->distance_down(); }
 
     float samplerate() const { return this->m_samplerate; }
     std::size_t size() const { return this->samples_up() + 1 + this->samples_down(); }
@@ -193,49 +173,22 @@ struct CubicWindowResampler : public WindowResampler< CubicWindowResampler > {
         OutputIt end,
         float offset
     ) const {
-        // TODO new a reference value in, The ref must come from RegularSurface, which must again be
-        // a part of Horizon
         boost::math::interpolators::cardinal_cubic_b_spline< float > spline(
             static_cast< float const* >( src ),
             this->input.size(),
             0,
             this->input.samplerate()
         );
-        // printf("src size: %zu\n", srcsize);
-        // printf("offset: %f\n", offset);
-        // printf("first: %f\n", *((float const*)src));
-        // printf(
-        //     "Horizon window. Up: %f, Down: %f, sampling: %f, size: %zu\n",
-        //     this->input.distance_up(),
-        //     this->input.distance_down(),
-        //     this->input.samplerate(),
-        //     this->input.size()
-        // );
-        //
-        // printf(
-        //     "Target window. Up: %f, Down: %f, sampling: %f, size: %zu\n",
-        //     this->output.distance_up(),
-        //     this->output.distance_down(),
-        //     this->output.samplerate(),
-        //     this->output.size()
-        // );
-
         float i = offset;
         std::transform(begin, end, begin,
             [&](float const& n){
-                // printf("i: %f, ", i);
                 auto v = spline(i);
-                // printf("v: %f\n", v);
                 i += this->output.samplerate();
                 return v;
             }
         );
     }
 };
-
-// Window scale(Window const& src, float samplerate, float ref) noexcept (true) {
-//
-// }
 
 /** Windowed horizon
  *
@@ -380,17 +333,10 @@ public:
 
         Resampler resampler(this->vertical_window(), target_window);
 
-        printf("stats: hsize = %zu, vsize = %zu, target vsize = %zu\n",
-            this->surface().size(),
-            this->vertical_window().size(),
-            target_window.size()
-        );
-        // printf("distance: %zu", std::distance(this->begin(), this->end()));
         AttributeFillVisitor    fillvisitor(this->fillvalue());
         AttributeComputeVisitor computevisitor(buffer.begin(), buffer.end());
         //TODO assert > 0. Or have an horizon.window.encapulate(target_window);
 
-        //TODO I must be a function of std::distance(this->begin, begin);
         auto i = std::distance(this->begin(), begin);
         auto compute = [&](const float& front) {
             if (front == this->fillvalue()) {
@@ -400,21 +346,7 @@ public:
             } else {
 
                 float ref = this->m_surface.at(i);
-
                 float window_offset = std::fmod(ref, this->vertical_window().samplerate());
-                printf("fmod(%f, %f) = %f\n",
-                    ref,
-                    this->vertical_window().samplerate(),
-                    window_offset
-                );
-
-
-                printf("i = %zu, depth: %f, target top: %f, window top = %f\n",
-                    i,
-                    ref,
-                    target_window.first(ref),
-                    this->m_vertical.first(ref)
-                );
 
                 resampler.resample(
                     &front,
@@ -426,7 +358,6 @@ public:
 
                 std::for_each(attrs.begin(), attrs.end(), [&](Attributes& attr) {
                     std::visit(computevisitor, attr);
-                    // attr.compute(buffer.begin(), buffer.end());
                 });
             }
 
@@ -442,16 +373,5 @@ private:
     Window         m_vertical;
     float          m_fillvalue;
 };
-
-namespace attributes {
-
-/* Attribute computations */
-
-void  min(Horizon const& horizon, void* dst, std::size_t size) noexcept (false);
-void  max(Horizon const& horizon, void* dst, std::size_t size) noexcept (false);
-void mean(Horizon const& horizon, void* dst, std::size_t size) noexcept (false);
-void  rms(Horizon const& horizon, void* dst, std::size_t size) noexcept (false);
-
-} // namespace attributes
 
 #endif /* VDS_SLICE_ATTRIBUTE_HPP */

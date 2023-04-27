@@ -355,20 +355,8 @@ void write_fillvalue(
 }
 
 Window fit(Window const& src, float samplerate) {
-    // TODO: make this a bit nicer if possible
-    // TODO: this is incorrect
-    float srcup   = src.distance_up();
-    float srcdown = src.distance_down();
-
-    float up   = srcup   - (srcup   / samplerate - std::floor( srcup   / samplerate )) * samplerate + samplerate;
-    float down = srcdown + (srcdown / samplerate - std::floor( srcdown / samplerate )) * samplerate + samplerate;
-
-    up   = src.distance_up();
-    down = src.distance_down() + 1 * src.samplerate();
-    //
-    // float up   = src.absdist_upward()   - std::floor(src.absdist_upward()   / samplerate);
-    // float up   = src.absdist_upward()   - std::floor(src.absdist_upward()   / samplerate);
-    // float down = src.absdist_downward() + std::ceil( src.absdist_downward() / samplerate);
+    float up   = src.distance_up();
+    float down = src.distance_down() + 1 * src.samplerate();
 
     return {up, down, samplerate};
 }
@@ -462,15 +450,9 @@ struct response fetch_horizon(
                 continue;
             }
 
-            // As long as window generates the correct values here we should be good
-
-            // printf("depth: %f, k[2]: %f\n", depth, k[2]);
-
             double top    = k[2] - vertical.samples_up();
             double bottom = k[2] + vertical.samples_down();
 
-            // printf("samples up/down: %f/%f\n", vertical.nsamples_upwards(), vertical.nsamples_downwards());
-            // printf("[top:bottom] = [%f:%f\n", top, bottom);
             if (not inrange(sample, top) or not inrange(sample, bottom)) {
                 throw std::runtime_error(
                     "Vertical window is out of vertical bounds at"
@@ -655,7 +637,7 @@ struct response horizon(
         RegularSurface surface{data, nrows, ncols, xori, yori, xinc, yinc, rot};
         Window verticalWindow(above, below, samplerate);
 
-        auto d =  fetch_horizon(
+        return fetch_horizon(
             cube,
             cred,
             surface,
@@ -663,10 +645,6 @@ struct response horizon(
             verticalWindow,
             interpolation
         );
-
-
-        std::cout << std::flush;
-        return d;
     } catch (const std::exception& e) {
         return to_response(e);
     }
@@ -726,11 +704,8 @@ struct response attribute(
             horizon_window,
             fillvalue
         );
-        auto res = calculate_attribute(horizon, target_window, attribute);
-        std::cout << std::flush;
-        return res;
+        return calculate_attribute(horizon, target_window, attribute);
     } catch (const std::exception& e) {
-        std::cout << std::flush;
         return to_response(e);
     }
 }

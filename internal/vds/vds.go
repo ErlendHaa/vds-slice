@@ -502,7 +502,6 @@ func GetAttributes(
 		}
 	}
 	
-	fmt.Println("back")
 	var out [][]byte
 	for _, attr := range targetAttributes {
 		buffer := C.attribute(
@@ -524,13 +523,11 @@ func GetAttributes(
 		defer C.response_delete(&buffer)
 		
 		if buffer.err != nil {
-			fmt.Println("error")
 			err := C.GoString(buffer.err)
 			return nil, errors.New(err)
 		}
 		out = append(out, C.GoBytes(unsafe.Pointer(buffer.data), C.int(buffer.size)))
 	}
 
-	fmt.Println("back")
 	return out, nil
 }
