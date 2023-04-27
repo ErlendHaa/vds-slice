@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <memory>
 #include <cmath>
+#include <iostream>
 
 #include "nlohmann/json.hpp"
 
@@ -353,18 +354,33 @@ void write_fillvalue(
     });
 }
 
+Window fit(Window const& src, float samplerate) {
+    // TODO: make this a bit nicer if possible
+    // TODO: this is incorrect
+    float srcup   = src.distance_up();
+    float srcdown = src.distance_down();
+
+    float up   = srcup   - (srcup   / samplerate - std::floor( srcup   / samplerate )) * samplerate + samplerate;
+    float down = srcdown + (srcdown / samplerate - std::floor( srcdown / samplerate )) * samplerate + samplerate;
+
+    up   = src.distance_up();
+    down = src.distance_down() + 1 * src.samplerate();
+    //
+    // float up   = src.absdist_upward()   - std::floor(src.absdist_upward()   / samplerate);
+    // float up   = src.absdist_upward()   - std::floor(src.absdist_upward()   / samplerate);
+    // float down = src.absdist_downward() + std::ceil( src.absdist_downward() / samplerate);
+
+    return {up, down, samplerate};
+}
+
 struct response fetch_horizon(
     std::string const&        url,
     std::string const&        credentials,
     RegularSurface            surface,
     float                     fillvalue,
-    float                     above,
-    float                     below,
+    Window                    targetWindow,
     enum interpolation_method interpolation
 ) {
-    if (above < 0) throw std::invalid_argument("'Above' must be >= 0");
-    if (below < 0) throw std::invalid_argument("'below' must be >= 0");
-
     DataHandle handle(url, credentials);
     MetadataHandle const& metadata = handle.get_metadata();
     auto transform = metadata.coordinate_transformer();
@@ -373,10 +389,10 @@ struct response fetch_horizon(
     auto const& xline  = metadata.xline();
     auto const& sample = metadata.sample();
 
-    std::size_t samples_above = std::floor( above / sample.stride() );
-    std::size_t samples_below = std::floor( below / sample.stride() );
-    std::size_t verical_size = samples_above + samples_below + 1;
-    std::size_t const nsamples = surface.size() * verical_size;
+    //TODO: asssert against up-sampling
+    auto vertical = fit(targetWindow, sample.stride());
+
+    std::size_t const nsamples = surface.size() * vertical.size();
 
     std::unique_ptr< voxel[] > samples(new voxel[nsamples]{{0}});
 
@@ -410,17 +426,17 @@ struct response fetch_horizon(
      * chunk and we need an extra loop over output array.
      */
     std::vector< std::size_t > noval_indicies;
-
     std::size_t i = 0;
     for (int row = 0; row < surface.nrows(); row++) {
         for (int col = 0; col < surface.ncols(); col++) {
-            float const depth = surface.value(row, col);
+            float depth = surface.value(row, col);
             if (depth == fillvalue) {
                 noval_indicies.push_back(i);
-                i += verical_size;
+                i += vertical.size();
                 continue;
             }
 
+            depth -= std::fmod(depth, sample.stride());
             auto const cdp = surface.coordinate(row, col);
 
             auto ij = transform.WorldToIJKPosition({cdp.x, cdp.y, 0});
@@ -442,12 +458,19 @@ struct response fetch_horizon(
 
             if (not inrange(iline, ij[0]) or not inrange(xline, ij[1])) {
                 noval_indicies.push_back(i);
-                i += verical_size;
+                i += vertical.size();
                 continue;
             }
 
-            double top    = k[2] - samples_above;
-            double bottom = k[2] + samples_below;
+            // As long as window generates the correct values here we should be good
+
+            // printf("depth: %f, k[2]: %f\n", depth, k[2]);
+
+            double top    = k[2] - vertical.samples_up();
+            double bottom = k[2] + vertical.samples_down();
+
+            // printf("samples up/down: %f/%f\n", vertical.nsamples_upwards(), vertical.nsamples_downwards());
+            // printf("[top:bottom] = [%f:%f\n", top, bottom);
             if (not inrange(sample, top) or not inrange(sample, bottom)) {
                 throw std::runtime_error(
                     "Vertical window is out of vertical bounds at"
@@ -467,7 +490,6 @@ struct response fetch_horizon(
             }
         }
     }
-
     auto const size = handle.samples_buffer_size(nsamples);
 
     std::unique_ptr< char[] > buffer(new char[size]());
@@ -479,28 +501,36 @@ struct response fetch_horizon(
         interpolation
     );
 
-    write_fillvalue(buffer.get(), noval_indicies, verical_size, fillvalue);
+    write_fillvalue(buffer.get(), noval_indicies, vertical.size(), fillvalue);
 
     return to_response(std::move(buffer), size);
 }
 
 struct response calculate_attribute(
     Horizon const& horizon,
+    Window  const& vertical,
     enum attribute target
 ) {
-    std::size_t size = horizon.mapsize();
+    auto surface = horizon.surface();
+    std::size_t size = surface.size() * sizeof(float);
     std::unique_ptr< char[] > attr(new char[size]());
 
-    using namespace attributes;
+    std::vector< Attributes > attrs;
     switch (target) {
-        case MIN:  {  min(horizon, attr.get(), size); break; }
-        case MAX:  {  max(horizon, attr.get(), size); break; }
-        case MEAN: { mean(horizon, attr.get(), size); break; }
-        case RMS:  {  rms(horizon, attr.get(), size); break; }
+        case MIN:  { attrs.push_back(std::move(  Min(attr.get(), size) ) ); break; }
+        case MAX:  { attrs.push_back(std::move(  Max(attr.get(), size) ) ) ; break; }
+        case MEAN: { attrs.push_back(std::move( Mean(attr.get(), size, vertical.size()) ) ); break; }
+        case RMS:  { attrs.push_back(std::move(  Rms(attr.get(), size, vertical.size()) ) ); break; }
         default:
             throw std::runtime_error("Attribute not implemented");
     }
 
+    horizon.calc_attributes< CubicWindowResampler >(
+        horizon.begin(),
+        horizon.end(),
+        vertical,
+        attrs
+    );
     return to_response(std::move(attr), size);
 }
 
@@ -615,6 +645,7 @@ struct response horizon(
     float fillvalue,
     float above,
     float below,
+    float samplerate,
     enum interpolation_method interpolation
 ) {
     try {
@@ -622,16 +653,20 @@ struct response horizon(
         std::string cred(credentials);
 
         RegularSurface surface{data, nrows, ncols, xori, yori, xinc, yinc, rot};
+        Window verticalWindow(above, below, samplerate);
 
-        return fetch_horizon(
+        auto d =  fetch_horizon(
             cube,
             cred,
             surface,
             fillvalue,
-            above,
-            below,
+            verticalWindow,
             interpolation
         );
+
+
+        std::cout << std::flush;
+        return d;
     } catch (const std::exception& e) {
         return to_response(e);
     }
@@ -654,16 +689,48 @@ struct response horizon_metadata(
 }
 
 struct response attribute(
-    const char* data,
-    size_t size,
-    size_t vertical_window,
-    float  fillvalue,
+    const float* surface_data,
+    size_t nrows,
+    size_t ncols,
+    float xori,
+    float yori,
+    float xinc,
+    float yinc,
+    float rot,
+    const char* horizon_data,
+    float above,
+    float below,
+    float samplerate,
+    float fillvalue,
     enum attribute attribute
 ) {
     try {
-        Horizon horizon((float*)data, size, vertical_window, fillvalue);
-        return calculate_attribute(horizon, attribute);
+        auto target_window = Window(above, below, samplerate);
+        // TODO pass in vds vertical stride
+        auto horizon_window = fit(target_window, 4);
+
+        auto surface = RegularSurface(
+            surface_data,
+            nrows,
+            ncols,
+            xori,
+            yori,
+            xinc,
+            yinc,
+            rot
+        );
+
+        auto horizon = Horizon(
+            (float*)horizon_data,
+            surface,
+            horizon_window,
+            fillvalue
+        );
+        auto res = calculate_attribute(horizon, target_window, attribute);
+        std::cout << std::flush;
+        return res;
     } catch (const std::exception& e) {
+        std::cout << std::flush;
         return to_response(e);
     }
 }

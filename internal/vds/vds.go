@@ -2,7 +2,7 @@ package vds
 
 /*
 #cgo LDFLAGS: -lopenvds
-#cgo CXXFLAGS: -std=c++11
+#cgo CXXFLAGS: -std=c++17
 #include <vds.h>
 #include <stdlib.h>
 */
@@ -323,6 +323,7 @@ func getHorizon(
 	fillValue     float32,
 	above         float32,
 	below         float32,
+	samplerate    float32,
 	interpolation int,
 ) (*C.struct_response, error) {
 	curl := C.CString(conn.Url())
@@ -364,6 +365,7 @@ func getHorizon(
 		C.float(fillValue),
 		C.float(above),
 		C.float(below),
+		C.float(samplerate),
 		C.enum_interpolation_method(interpolation),
 	)
 
@@ -401,6 +403,7 @@ func GetHorizon(
 		fillValue,
 		above,
 		below,
+		4, // TODO get from file
 		interpolation,
 	)
 
@@ -449,6 +452,7 @@ func GetAttributes(
 	fillValue     float32,
 	above         float32,
 	below         float32,
+	samplerate    float32,
 	attributes    []string,
 	interpolation int,
 ) ([][]byte, error) {
@@ -472,6 +476,7 @@ func GetAttributes(
 		fillValue,
 		above,
 		below,
+		samplerate,
 		interpolation,
 	)
 	if err != nil {
@@ -481,25 +486,51 @@ func GetAttributes(
 
 	nrows := len(data)
 	ncols := len(data[0])
+	cdata := make([]C.float, nrows * ncols)
+	for i := range data {
+		if len(data[i]) != ncols  {
+			msg := fmt.Sprintf(
+				"Surface rows are not of the same length. "+
+					"Row 0 has %d elements. Row %d has %d elements",
+				ncols, i, len(data[i]),
+			)
+			return nil, NewInvalidArgument(msg)
+		}
 
+		for j := range data[i] {
+			cdata[i * ncols  + j] = C.float(data[i][j])
+		}
+	}
+	
+	fmt.Println("back")
 	var out [][]byte
-	vertical_window := int(horizon.size) / (nrows * ncols * 4)
 	for _, attr := range targetAttributes {
 		buffer := C.attribute(
+			&cdata[0],
+			C.size_t(nrows),
+			C.size_t(ncols),
+			C.float(originX),
+			C.float(originY),
+			C.float(increaseX),
+			C.float(increaseY),
+			C.float(rotation),
 			horizon.data,
-			C.size_t(nrows * ncols),
-			C.size_t(vertical_window),
+			C.float(above),
+			C.float(below),
+			C.float(samplerate),
 			C.float(fillValue),
 			C.enum_attribute(attr),
 		)
 		defer C.response_delete(&buffer)
 		
 		if buffer.err != nil {
+			fmt.Println("error")
 			err := C.GoString(buffer.err)
 			return nil, errors.New(err)
 		}
 		out = append(out, C.GoBytes(unsafe.Pointer(buffer.data), C.int(buffer.size)))
 	}
 
+	fmt.Println("back")
 	return out, nil
 }

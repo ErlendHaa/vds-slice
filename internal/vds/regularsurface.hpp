@@ -108,9 +108,15 @@ public:
         return this->m_data[row * this->ncols() + col];
     };
 
-    std::size_t nrows() noexcept (true) { return this->m_nrows; };
-    std::size_t ncols() noexcept (true) { return this->m_ncols; };
-    std::size_t size()  noexcept (true) { return this->ncols() * this->nrows(); };
+    float at(std::size_t i) const noexcept (false) {
+        if (i >= this->size()) throw std::runtime_error("index out of range");
+
+        return this->m_data[i];
+    }
+
+    std::size_t nrows() const noexcept (true) { return this->m_nrows; };
+    std::size_t ncols() const noexcept (true) { return this->m_ncols; };
+    std::size_t size()  const noexcept (true) { return this->ncols() * this->nrows(); };
 private:
     const float* m_data;
     std::size_t  m_nrows;

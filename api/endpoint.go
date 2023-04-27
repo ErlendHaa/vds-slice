@@ -277,6 +277,7 @@ func (e *Endpoint) attributes(ctx *gin.Context, request AttributeRequest) {
 		*request.FillValue,
 		*request.Above,
 		*request.Below,
+		4,
 		request.Attributes,
 		interpolation,
 	)
