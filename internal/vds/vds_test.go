@@ -1545,3 +1545,9 @@ func TestAttributeVerticalBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestInterp(t *testing.T) {
+	GetInterp()
+	t.Fatal("Stop")
+
+}

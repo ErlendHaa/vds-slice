@@ -2,10 +2,13 @@
 #define VDS_SLICE_ATTRIBUTE_HPP
 
 #include <functional>
+#include <iostream>
 
 #include <boost/math/interpolators/cardinal_cubic_b_spline.hpp>
 
 #include "regularsurface.hpp"
+
+class Horizon;
 
 template< typename Derived >
 class Attribute {
@@ -173,20 +176,25 @@ struct CubicWindowResampler : public WindowResampler< CubicWindowResampler > {
         OutputIt end,
         T offset
     ) const {
+
         boost::math::interpolators::cardinal_cubic_b_spline< T > spline(
             static_cast< T const* >( src ),
             this->input.size(),
             0,
             this->input.samplerate()
         );
+        printf("output\n");
         T i = offset;
         std::transform(begin, end, begin,
             [&](T const& n){
                 auto v = spline(i);
+                printf("%f: %f\n", i, v);
                 i += this->output.samplerate();
                 return v;
             }
         );
+
+        std::cout << std::flush;
     }
 };
 
@@ -355,6 +363,12 @@ public:
                     buf.begin(),
                     [](float x) { return (double)x; }
                 );
+
+                printf("input\n");
+                float j = 0;
+                std::for_each(buf.begin(), buf.end(), [&](float x) { printf("%f: %f\n", j++, x); });
+                printf("\n");
+
 
                 resampler.resample(
                     buf.data(),

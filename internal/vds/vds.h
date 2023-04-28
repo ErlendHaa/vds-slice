@@ -121,6 +121,7 @@ struct response attribute(
 
 void response_delete(struct response*);
 
+void print_interpolation();
 
 #ifdef __cplusplus
 }

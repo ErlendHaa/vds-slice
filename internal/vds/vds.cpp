@@ -380,6 +380,21 @@ struct response fetch_horizon(
     //TODO: asssert against up-sampling
     auto vertical = fit(targetWindow, sample.stride());
 
+    printf("target: size: %zu,  dist: [%f, %f], samples: [%f, %f]\n",
+        targetWindow.size(),
+        targetWindow.distance_up(),
+        targetWindow.distance_down(),
+        targetWindow.samples_up(),
+        targetWindow.samples_down()
+    );
+    printf("fetching: size: %zu, dist: [%f, %f], samples: [%f, %f]\n",
+        vertical.size(),
+        vertical.distance_up(),
+        vertical.distance_down(),
+        vertical.samples_up(),
+        vertical.samples_down()
+    );
+
     std::size_t const nsamples = surface.size() * vertical.size();
 
     std::unique_ptr< voxel[] > samples(new voxel[nsamples]{{0}});
@@ -707,5 +722,39 @@ struct response attribute(
         return calculate_attribute(horizon, target_window, attribute);
     } catch (const std::exception& e) {
         return to_response(e);
+    }
+}
+
+void print_interpolation() {
+    try {
+
+        std::vector< float > input(6);
+        std::vector< float > output(21);
+
+        std::iota(input.begin(), input.end(), -4);
+
+        printf("input\n");
+        std::for_each(input.begin(), input.end(), [](float x) { printf("%f, ", x); });
+        printf("\n");
+
+        boost::math::interpolators::cardinal_cubic_b_spline< float > spline(
+            input.begin(),
+            input.end(),
+            0,
+            4
+        );
+
+        float offset = 0;
+        float i = offset;
+        std::transform(output.begin(), output.end(), output.begin(),
+            [&](float const& n){
+                auto v = spline(i);
+                printf("%f: %f\n", i, v);
+                i += 1;
+                return v;
+            }
+        );
+        std::cout << std::flush;
+    } catch (const std::exception& e) {
     }
 }

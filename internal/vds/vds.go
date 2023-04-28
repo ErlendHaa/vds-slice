@@ -531,3 +531,7 @@ func GetAttributes(
 
 	return out, nil
 }
+
+func GetInterp() {
+	C.print_interpolation()
+}
