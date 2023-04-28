@@ -165,23 +165,23 @@ struct CubicWindowResampler : public WindowResampler< CubicWindowResampler > {
         : WindowResampler< CubicWindowResampler >(input, output)
     {}
 
-    template< typename OutputIt >
+    template< typename T, typename OutputIt >
     void resample(
         void const* src,
         std::size_t srcsize,
         OutputIt begin,
         OutputIt end,
-        float offset
+        T offset
     ) const {
-        boost::math::interpolators::cardinal_cubic_b_spline< float > spline(
-            static_cast< float const* >( src ),
+        boost::math::interpolators::cardinal_cubic_b_spline< T > spline(
+            static_cast< T const* >( src ),
             this->input.size(),
             0,
             this->input.samplerate()
         );
-        float i = offset;
+        T i = offset;
         std::transform(begin, end, begin,
-            [&](float const& n){
+            [&](T const& n){
                 auto v = spline(i);
                 i += this->output.samplerate();
                 return v;
@@ -329,7 +329,8 @@ public:
         Window target_window,
         std::vector< Attributes > & attrs
     ) const noexcept (false) {
-        std::vector< float > buffer(target_window.size());
+        std::vector< double > buffer(target_window.size());
+        std::vector< double > buf(this->vertical_window().size());
 
         Resampler resampler(this->vertical_window(), target_window);
 
@@ -346,11 +347,18 @@ public:
             } else {
 
                 float ref = this->m_surface.at(i);
-                float window_offset = std::fmod(ref, this->vertical_window().samplerate());
+                double window_offset = std::fmod(ref, this->vertical_window().samplerate());
+
+                std::transform(
+                    VerticalIt(&front),
+                    VerticalIt(&front + this->m_vertical.size()),
+                    buf.begin(),
+                    [](float x) { return (double)x; }
+                );
 
                 resampler.resample(
-                    &front,
-                    this->m_vertical.size(),
+                    buf.data(),
+                    buf.size(),
                     buffer.begin(),
                     buffer.end(),
                     window_offset

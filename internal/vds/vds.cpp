@@ -356,7 +356,7 @@ void write_fillvalue(
 
 Window fit(Window const& src, float samplerate) {
     float up   = src.distance_up();
-    float down = src.distance_down() + 1 * src.samplerate();
+    float down = src.distance_down() + 1 * samplerate;
 
     return {up, down, samplerate};
 }
