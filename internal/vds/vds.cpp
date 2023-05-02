@@ -681,7 +681,7 @@ struct response horizon_metadata(
     }
 }
 
-struct response attribute(
+int attribute(
     const float* surface_data,
     size_t nrows,
     size_t ncols,
@@ -695,7 +695,9 @@ struct response attribute(
     float below,
     float samplerate,
     float fillvalue,
-    enum attribute attribute
+    enum attribute* targets,
+    size_t nattributes,
+    void* dst
 ) {
     try {
         auto target_window = Window(above, below, samplerate);
@@ -719,9 +721,36 @@ struct response attribute(
             horizon_window,
             fillvalue
         );
-        return calculate_attribute(horizon, target_window, attribute);
+
+
+        std::vector< Attributes > attrs;
+        std::size_t vsize = target_window.size();
+        std::size_t mapsize = surface.size() * sizeof(float);
+
+        for (int i = 0; i < nattributes; i++) {
+            switch (static_cast< enum attribute >(*targets)) {
+                case MIN:  { attrs.push_back(  Min(dst, mapsize) ); break; }
+                case MAX:  { attrs.push_back(  Max(dst, mapsize) ); break; }
+                case MEAN: { attrs.push_back( Mean(dst, mapsize, vsize) ); break; }
+                case RMS:  { attrs.push_back(  Rms(dst, mapsize, vsize) ); break; }
+                default:
+                    throw std::runtime_error("Attribute not impemented");
+            }
+
+            dst = static_cast< char* >(dst) + mapsize;
+            ++targets;
+        }
+
+        horizon.calc_attributes< CubicWindowResampler >(
+            horizon.begin(),
+            horizon.end(),
+            target_window,
+            attrs
+        );
+
+        return 0;
     } catch (const std::exception& e) {
-        return to_response(e);
+        return -1;
     }
 }
 

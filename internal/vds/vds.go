@@ -486,7 +486,10 @@ func GetAttributes(
 
 	nrows := len(data)
 	ncols := len(data[0])
-	cdata := make([]C.float, nrows * ncols)
+	hsize := nrows * ncols
+	mapsize := hsize * 4
+	cdata := make([]C.float, hsize)
+
 	for i := range data {
 		if len(data[i]) != ncols  {
 			msg := fmt.Sprintf(
@@ -502,33 +505,44 @@ func GetAttributes(
 		}
 	}
 	
-	var out [][]byte
-	for _, attr := range targetAttributes {
-		buffer := C.attribute(
-			&cdata[0],
-			C.size_t(nrows),
-			C.size_t(ncols),
-			C.float(originX),
-			C.float(originY),
-			C.float(increaseX),
-			C.float(increaseY),
-			C.float(rotation),
-			horizon.data,
-			C.float(above),
-			C.float(below),
-			C.float(samplerate),
-			C.float(fillValue),
-			C.enum_attribute(attr),
-		)
-		defer C.response_delete(&buffer)
-		
-		if buffer.err != nil {
-			err := C.GoString(buffer.err)
-			return nil, errors.New(err)
-		}
-		out = append(out, C.GoBytes(unsafe.Pointer(buffer.data), C.int(buffer.size)))
+	/* Why this crappy dance ?
+     *
+     */
+	buffer := make([]byte, len(targetAttributes) * mapsize)
+	out := make([][]byte, len(targetAttributes))
+	for i := range targetAttributes {
+		start := i * mapsize
+		stop  := start + mapsize
+		out[i] = buffer[start:stop]
 	}
 
+	ctargets := make([]C.enum_attribute, len(targetAttributes))
+	for i := range targetAttributes {
+		ctargets[i] = C.enum_attribute(targetAttributes[i])
+	}
+
+	_, err = C.attribute(
+		&cdata[0],
+		C.size_t(nrows),
+		C.size_t(ncols),
+		C.float(originX),
+		C.float(originY),
+		C.float(increaseX),
+		C.float(increaseY),
+		C.float(rotation),
+		horizon.data,
+		C.float(above),
+		C.float(below),
+		C.float(samplerate),
+		C.float(fillValue),
+		&ctargets[0],
+		C.size_t(len(targetAttributes)),
+		unsafe.Pointer(&buffer[0]),
+	)
+	if err != nil {
+		return nil, errors.New("Count not compute attribute")
+	}
+	
 	return out, nil
 }
 

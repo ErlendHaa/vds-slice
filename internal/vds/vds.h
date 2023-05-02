@@ -102,7 +102,7 @@ struct response horizon_metadata(
     size_t ncols
 );
 
-struct response attribute(
+int attribute(
     const float* surface_data,
     size_t nrows,
     size_t ncols,
@@ -116,7 +116,9 @@ struct response attribute(
     float below,
     float samplerate,
     float fillvalue,
-    enum attribute attribute
+    enum attribute* attribute,
+    size_t nattributes,
+    void* dsts
 );
 
 void response_delete(struct response*);
