@@ -183,18 +183,18 @@ struct CubicWindowResampler : public WindowResampler< CubicWindowResampler > {
             0,
             this->input.samplerate()
         );
-        printf("output\n");
+        // printf("output\n");
         T i = offset;
         std::transform(begin, end, begin,
             [&](T const& n){
                 auto v = spline(i);
-                printf("%f: %f\n", i, v);
+                // printf("%f: %f\n", i, v);
                 i += this->output.samplerate();
                 return v;
             }
         );
 
-        std::cout << std::flush;
+        // std::cout << std::flush;
     }
 };
 
@@ -364,10 +364,10 @@ public:
                     [](float x) { return (double)x; }
                 );
 
-                printf("input\n");
-                float j = 0;
-                std::for_each(buf.begin(), buf.end(), [&](float x) { printf("%f: %f\n", j++, x); });
-                printf("\n");
+                // printf("input\n");
+                // float j = 0;
+                // std::for_each(buf.begin(), buf.end(), [&](float x) { printf("%f: %f\n", j++, x); });
+                // printf("\n");
 
 
                 resampler.resample(

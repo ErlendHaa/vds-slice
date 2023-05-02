@@ -7,6 +7,7 @@
 #include <memory>
 #include <cmath>
 #include <iostream>
+#include <chrono>
 
 #include "nlohmann/json.hpp"
 
@@ -380,20 +381,20 @@ struct response fetch_horizon(
     //TODO: asssert against up-sampling
     auto vertical = fit(targetWindow, sample.stride());
 
-    printf("target: size: %zu,  dist: [%f, %f], samples: [%f, %f]\n",
-        targetWindow.size(),
-        targetWindow.distance_up(),
-        targetWindow.distance_down(),
-        targetWindow.samples_up(),
-        targetWindow.samples_down()
-    );
-    printf("fetching: size: %zu, dist: [%f, %f], samples: [%f, %f]\n",
-        vertical.size(),
-        vertical.distance_up(),
-        vertical.distance_down(),
-        vertical.samples_up(),
-        vertical.samples_down()
-    );
+    // printf("target: size: %zu,  dist: [%f, %f], samples: [%f, %f]\n",
+    //     targetWindow.size(),
+    //     targetWindow.distance_up(),
+    //     targetWindow.distance_down(),
+    //     targetWindow.samples_up(),
+    //     targetWindow.samples_down()
+    // );
+    // printf("fetching: size: %zu, dist: [%f, %f], samples: [%f, %f]\n",
+    //     vertical.size(),
+    //     vertical.distance_up(),
+    //     vertical.distance_down(),
+    //     vertical.samples_up(),
+    //     vertical.samples_down()
+    // );
 
     std::size_t const nsamples = surface.size() * vertical.size();
 
@@ -741,6 +742,9 @@ int attribute(
             ++targets;
         }
 
+        using namespace std::chrono;
+        auto start = high_resolution_clock::now();
+
         horizon.calc_attributes< CubicWindowResampler >(
             horizon.begin(),
             horizon.end(),
@@ -748,6 +752,10 @@ int attribute(
             attrs
         );
 
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+        std::cout << "calc attr in: " << duration.count() << std::endl;
+        std::cout << std::flush;
         return 0;
     } catch (const std::exception& e) {
         return -1;
