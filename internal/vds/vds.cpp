@@ -504,33 +504,33 @@ struct response fetch_horizon(
     return to_response(std::move(buffer), size);
 }
 
-struct response calculate_attribute(
-    Horizon const& horizon,
-    Window  const& vertical,
-    enum attribute target
-) {
-    auto surface = horizon.surface();
-    std::size_t size = surface.size() * sizeof(float);
-    std::unique_ptr< char[] > attr(new char[size]());
-
-    std::vector< Attributes > attrs;
-    switch (target) {
-        case MIN:  { attrs.push_back(std::move(  Min(attr.get(), size) ) ); break; }
-        case MAX:  { attrs.push_back(std::move(  Max(attr.get(), size) ) ) ; break; }
-        case MEAN: { attrs.push_back(std::move( Mean(attr.get(), size, vertical.size()) ) ); break; }
-        case RMS:  { attrs.push_back(std::move(  Rms(attr.get(), size, vertical.size()) ) ); break; }
-        default:
-            throw std::runtime_error("Attribute not implemented");
-    }
-
-    horizon.calc_attributes< CubicWindowResampler >(
-        horizon.begin(),
-        horizon.end(),
-        vertical,
-        attrs
-    );
-    return to_response(std::move(attr), size);
-}
+// struct response calculate_attribute(
+//     Horizon const& horizon,
+//     Window  const& vertical,
+//     enum attribute target
+// ) {
+//     auto surface = horizon.surface();
+//     std::size_t size = surface.size() * sizeof(float);
+//     std::unique_ptr< char[] > attr(new char[size]());
+//
+//     std::vector< Attributes > attrs;
+//     switch (target) {
+//         case MIN:  { attrs.push_back(std::move(  Min(attr.get(), size) ) ); break; }
+//         case MAX:  { attrs.push_back(std::move(  Max(attr.get(), size) ) ) ; break; }
+//         case MEAN: { attrs.push_back(std::move( Mean(attr.get(), size, vertical.size()) ) ); break; }
+//         case RMS:  { attrs.push_back(std::move(  Rms(attr.get(), size, vertical.size()) ) ); break; }
+//         default:
+//             throw std::runtime_error("Attribute not implemented");
+//     }
+//
+//     horizon.calc_attributes< CubicWindowResampler >(
+//         horizon.begin(),
+//         horizon.end(),
+//         vertical,
+//         attrs
+//     );
+//     return to_response(std::move(attr), size);
+// }
 
 struct response fetch_horizon_metadata(
     std::string const& url,
@@ -724,16 +724,16 @@ int attribute(
         );
 
 
-        std::vector< Attributes > attrs;
+        std::vector< std::shared_ptr<vrt::Attribute > > attrs;
         std::size_t vsize = target_window.size();
         std::size_t mapsize = surface.size() * sizeof(float);
 
         for (int i = 0; i < nattributes; i++) {
             switch (static_cast< enum attribute >(*targets)) {
-                case MIN:  { attrs.push_back(  Min(dst, mapsize) ); break; }
-                case MAX:  { attrs.push_back(  Max(dst, mapsize) ); break; }
-                case MEAN: { attrs.push_back( Mean(dst, mapsize, vsize) ); break; }
-                case RMS:  { attrs.push_back(  Rms(dst, mapsize, vsize) ); break; }
+                case MIN:  { attrs.emplace_back(std::make_shared< vrt::Min  >( dst, mapsize) ); break; }
+                case MAX:  { attrs.emplace_back(std::make_shared< vrt::Max  >( dst, mapsize) ); break; }
+                case MEAN: { attrs.emplace_back(std::make_shared< vrt::Mean >( dst, mapsize, vsize) ); break; }
+                case RMS:  { attrs.emplace_back(std::make_shared< vrt::Rms  >( dst, mapsize, vsize) ); break; }
                 default:
                     throw std::runtime_error("Attribute not impemented");
             }

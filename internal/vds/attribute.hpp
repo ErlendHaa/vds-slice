@@ -3,12 +3,88 @@
 
 #include <functional>
 #include <iostream>
+#include <memory>
 
 #include <boost/math/interpolators/cardinal_cubic_b_spline.hpp>
 
 #include "regularsurface.hpp"
 
 class Horizon;
+
+namespace vrt {
+
+class Attribute {
+public:
+    Attribute(void* dst, std::size_t size) : dst(dst), size(size) {};
+
+    virtual void compute(std::vector< double >::iterator begin, std::vector< double >::iterator end) noexcept (false) = 0;
+
+    void fill(float x) noexcept (true) { this->write(x); };
+
+private:
+    void*       dst;
+    std::size_t size;
+    std::size_t offset = 0;
+
+protected:
+    void write(float x) {
+        char* dst = (char*)this->dst + this->offset * sizeof(float);
+        memcpy(dst, &x, sizeof(float));
+        ++this->offset;
+    }
+};
+
+struct Min final : public Attribute {
+    Min(void* dst, std::size_t size) : Attribute(dst, size) {}
+
+    void compute(std::vector< double >::iterator begin, std::vector< double >::iterator end) noexcept (false) override {
+        float value =  *std::min_element(begin, end);
+        this->write(value);
+    }
+};
+
+struct Max final : public Attribute {
+    Max(void* dst, std::size_t size) : Attribute(dst, size) {}
+
+    void compute(std::vector< double >::iterator begin, std::vector< double >::iterator end) noexcept (false) override {
+        float value = *std::max_element(begin, end);
+        this->write(value);
+    }
+};
+
+struct Mean final : public Attribute {
+    Mean(void* dst, std::size_t size, std::size_t vsize)
+        : Attribute(dst, size)
+        , vsize(vsize)
+    {}
+
+    void compute(std::vector< double >::iterator begin, std::vector< double >::iterator end) noexcept (false) override {
+        float sum = std::accumulate(begin, end, 0.0f);
+        this->write(sum / this->vsize);
+    }
+private:
+    std::size_t vsize;
+};
+
+struct Rms final : public Attribute {
+    Rms(void* dst, std::size_t size, std::size_t vsize)
+        : Attribute(dst, size)
+        , vsize(vsize)
+    {}
+
+    void compute(std::vector< double >::iterator begin, std::vector< double >::iterator end) noexcept (false) override {
+        float sum = std::accumulate( std::next(begin), end, std::pow(*begin, 2),
+            [](float a, float b) {
+                return a + std::pow(b, 2);
+            }
+        );
+        this->write(std::sqrt(sum / this->vsize));
+    }
+private:
+    std::size_t vsize;
+};
+
+} // virtual
 
 template< typename Derived >
 class Attribute {
@@ -335,22 +411,22 @@ public:
         HorizontalIt begin,
         HorizontalIt end,
         Window target_window,
-        std::vector< Attributes > & attrs
+        std::vector< std::shared_ptr< vrt::Attribute > >& attrs
     ) const noexcept (false) {
         std::vector< double > buffer(target_window.size());
         std::vector< double > buf(this->vertical_window().size());
 
         Resampler resampler(this->vertical_window(), target_window);
 
-        AttributeFillVisitor    fillvisitor(this->fillvalue());
-        AttributeComputeVisitor computevisitor(buffer.begin(), buffer.end());
+        // AttributeFillVisitor    fillvisitor(this->fillvalue());
+        // AttributeComputeVisitor computevisitor(buffer.begin(), buffer.end());
         //TODO assert > 0. Or have an horizon.window.encapulate(target_window);
 
         auto i = std::distance(this->begin(), begin);
         auto compute = [&](const float& front) {
             if (front == this->fillvalue()) {
-                std::for_each(attrs.begin(), attrs.end(), [&](Attributes& attr) {
-                    std::visit(fillvisitor, attr);
+                std::for_each(attrs.begin(), attrs.end(), [&](std::shared_ptr<vrt::Attribute > attr) {
+                    attr->fill(front);
                 });
             } else {
 
@@ -378,8 +454,8 @@ public:
                     window_offset
                 );
 
-                std::for_each(attrs.begin(), attrs.end(), [&](Attributes& attr) {
-                    std::visit(computevisitor, attr);
+                std::for_each(attrs.begin(), attrs.end(), [&](std::shared_ptr<vrt::Attribute> attr) {
+                    attr->compute(buffer.begin(), buffer.end());
                 });
             }
 
