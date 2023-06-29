@@ -26,6 +26,8 @@ type opts struct {
 	cacheSize       uint32
 	metrics         bool
 	metricsPort     uint32
+	httpCache       bool
+	httpCachePort   uint32
 }
 
 func parseAsUint32(fallback uint32, value string) uint32 {
@@ -65,6 +67,8 @@ func parseopts() opts {
 		cacheSize:       parseAsUint32(0,    os.Getenv("VDSSLICE_CACHE_SIZE")),
 		metrics:         parseAsBool(false,  os.Getenv("VDSSLICE_METRICS")),
 		metricsPort:     parseAsUint32(8081, os.Getenv("VDSSLICE_METRICS_PORT")),
+		httpCache:       parseAsBool(false,  os.Getenv("VDSSLICE_HTTP_CACHE")),
+		httpCachePort:   parseAsUint32(8079, os.Getenv("VDSSLICE_HTTP_CACHE_PORT")),
 	}
 
 	getopt.FlagLong(
@@ -115,6 +119,21 @@ func parseopts() opts {
 		"Ignored if metrics are not turned on. (see --metrics)\n" +
 		"Can also be set by enviroment variable 'VDSSLICE_METRICS_PORT'",
 		"int",
+	)
+	getopt.FlagLong(
+		&opts.httpCache,
+		"http-cache",
+		0,
+		"Redirect http requests through a reverse proxy with caching" +
+		"Can also be set by enviroment variable 'VDSSLICE_HTTP_CACHE'",
+	)
+	
+	getopt.FlagLong(
+		&opts.httpCache,
+		"http-cache-port",
+		0,
+		"Port number of the http cache. Ignored if --http-cache is not set." +
+		"Can also be set by enviroment variable 'VDSSLICE_HTTP_CACHE_PORT'",
 	)
 
 	getopt.Parse()
@@ -167,10 +186,22 @@ func main() {
 
 	storageAccounts := strings.Split(opts.storageAccounts, ",")
 
+	// TODO: extract
+	var connections vds.ConnectionMaker	
+	if opts.httpCache {
+		connections = vds.MakeHTTPCacheConnection(
+			storageAccounts, 
+			fmt.Sprintf("%d", opts.httpCachePort),
+		)
+	} else {
+		connections = vds.MakeAzureConnection(storageAccounts)
+	}
+
 	endpoint := api.Endpoint{
-		MakeVdsConnection: vds.MakeAzureConnection(storageAccounts),
+		MakeVdsConnection: connections,
 		Cache:             cache.NewCache(opts.cacheSize),
 	}
+
 
 	app := gin.New()
 	app.SetTrustedProxies(nil)
@@ -194,7 +225,7 @@ func main() {
 			metricsApp.Run(fmt.Sprintf(":%d", opts.metricsPort))
 		}()
 	}
-
+	
 	setupApp(app, &endpoint, metric)
 	app.Run(fmt.Sprintf(":%d", opts.port))
 }

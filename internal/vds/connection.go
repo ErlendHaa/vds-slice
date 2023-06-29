@@ -66,6 +66,49 @@ type Connection interface {
 	IsAuthorizedToRead()    bool
 }
 
+type HTTPCacheConnection struct {
+	port      string
+	account   string
+	container string
+	blobPath  string
+	sas       string
+}
+
+func (c *HTTPCacheConnection) Url() string {
+	return fmt.Sprintf("http://localhost:%s/%s/%s/%s?%s",
+		c.port,
+		c.account,
+		c.container,
+		c.blobPath,
+		c.sas,
+	)
+}
+
+func (c *HTTPCacheConnection) ConnectionString() string {
+	return ""
+}
+
+func (c *HTTPCacheConnection) IsAuthorizedToRead() bool {
+	// TODO: same as AzureConnection ?
+	return false;
+}
+
+func NewHTTPCacheConnection(
+	port      string,
+	account   string,
+	container string,
+	blobPath  string,
+	sas       string,
+) *HTTPCacheConnection {
+	return &HTTPCacheConnection{
+		port:      port,
+		account:   account,
+		container: container,
+		blobPath:  blobPath,
+		sas:       sas,
+	}
+}
+
 type AzureConnection struct {
 	blobPath  string
 	container string
@@ -244,6 +287,46 @@ func MakeAzureConnection(accounts []string) ConnectionMaker {
 		if err := validateSasSrt(connection); err != nil {
 			return nil, err
 		}
+
+		return connection, nil
+	}
+}
+
+func MakeHTTPCacheConnection(accounts []string, port string) ConnectionMaker {
+	// TODO extract in seperate function
+	var allowlist []*url.URL
+	for _, account := range accounts {
+		account = strings.TrimSpace(account)
+		if len(account) == 0 {
+			panic("Empty storage-account not allowed")
+		}
+		url, err := url.Parse(account)
+		if err != nil {
+			panic(err)
+		}
+
+		allowlist = append(allowlist, url)
+	}
+
+	return func(blob string, sas string) (Connection, error) {
+		blobUrl, err := makeUrl(blob)
+		if err != nil {
+			return nil, NewInvalidArgument(err.Error())
+		}
+
+		if err := isAllowed(allowlist, blobUrl); err != nil {
+			return nil, err
+		}
+
+		container, blobPath := splitAzureUrl(blobUrl.Path)
+		account := strings.SplitN(blobUrl.Host, ".", 1)[0] 
+		connection := NewHTTPCacheConnection(
+			port,
+			account,
+			container,
+			blobPath,
+			sanitizeSAS(sas),
+		)
 
 		return connection, nil
 	}

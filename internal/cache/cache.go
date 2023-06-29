@@ -50,7 +50,7 @@ func (c *RistrettoCache) Get(key string) (val CacheEntry, hit bool) {
 	return val, hit;
 }
 
-func NewRistrettoCache(cacheSize uint32) *RistrettoCache {
+func NewRistrettoCache(cacheSize int64) *RistrettoCache {
 	/**  Maxcost and NumCounters
 	 *
 	 * This Ristretto cache is configured with a max size in bytes (the
@@ -66,10 +66,10 @@ func NewRistrettoCache(cacheSize uint32) *RistrettoCache {
 	 *
 	 * [1] https://github.com/dgraph-io/ristretto#Config
 	 */
-	avgEntrySize := 1 * 1024 * 1024
+	avgEntrySize := int64(1 * 1024 * 1024)
 	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters:        10 * int64(cacheSize) / int64(avgEntrySize),
-		MaxCost:            int64(cacheSize),
+		NumCounters:        10 * cacheSize / avgEntrySize,
+		MaxCost:            cacheSize,
 		BufferItems:        64,
 		/*
 		 * By default Ristretto will add an internal cost to the cost set when
@@ -109,7 +109,7 @@ func NewCache(cachesize uint32) Cache {
 	if cachesize == 0 {
 		return NewNoCache()
 	}
-	return NewRistrettoCache(cachesize * 1024 * 1024)
+	return NewRistrettoCache(int64(cachesize * 1024 * 1024))
 }
 
 /** Compute a sha1 hash of any object
