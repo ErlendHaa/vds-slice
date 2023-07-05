@@ -49,7 +49,7 @@ spec:
         - environment: test
           variables:
             VDSSLICE_PORT: 8080
-            VDSSLICE_CACHE_SIZE: 256 # MB
+            VDSSLICE_CACHE_SIZE: 0 # MB
             VDSSLICE_METRICS: true
             VDSSLICE_METRICS_PORT: 8081
           secretRefs:
@@ -62,8 +62,8 @@ spec:
           monitoring: true
           resources:
             requests:
-              memory: "2048Mi"
-              cpu: "500m"
+              memory: "6144Mi"
+              cpu: "6000m"
           horizontalScaling:
             minReplicas: 1
             maxReplicas: 3
