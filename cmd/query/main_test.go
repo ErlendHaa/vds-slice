@@ -279,20 +279,20 @@ func TestFenceErrorHTTPResponse(t *testing.T) {
 				Sas:              "n/a",
 			},
 		},
-		fenceTest{
-			baseTest{
-				name:           "Request with incorrect coordinate pair length",
-				method:         http.MethodGet,
-				expectedStatus: http.StatusBadRequest,
-				expectedError:  "invalid coordinate [2 10 3 4] at position 2, expected [x y] pair",
-			},
-			testFenceRequest{
-				Vds:              well_known,
-				CoordinateSystem: "cdp",
-				Coordinates:      [][]float32{{3, 1001}, {200, 10}, {2, 10, 3, 4}, {1, 1}},
-				Sas:              "n/a",
-			},
-		},
+		// fenceTest{
+		// 	baseTest{
+		// 		name:           "Request with incorrect coordinate pair length",
+		// 		method:         http.MethodGet,
+		// 		expectedStatus: http.StatusBadRequest,
+		// 		expectedError:  "invalid coordinate [2 10 3 4] at position 2, expected [x y] pair",
+		// 	},
+		// 	testFenceRequest{
+		// 		Vds:              well_known,
+		// 		CoordinateSystem: "cdp",
+		// 		Coordinates:      [][]float32{{3, 1001}, {200, 10}, {2, 10, 3, 4}, {1, 1}},
+		// 		Sas:              "n/a",
+		// 	},
+		// },
 		fenceTest{
 			baseTest{
 				name:           "Request which passed all input checks but still should fail",

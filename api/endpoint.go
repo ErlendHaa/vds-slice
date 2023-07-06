@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -53,6 +54,7 @@ func abortOnError(ctx *gin.Context, err error) bool {
 type Endpoint struct {
 	MakeVdsConnection vds.ConnectionMaker
 	Cache             cache.Cache
+	Goroutines        int
 }
 
 func prepareRequestLogging(ctx *gin.Context, request Stringable) {
@@ -109,6 +111,19 @@ func (e *Endpoint) slice(ctx *gin.Context, request SliceRequest) {
 	writeResponse(ctx, metadata, [][]byte{data})
 }
 
+type FencePart struct {
+	data []byte
+	part int
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+
+	return b
+}
+
 func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
 	prepareRequestLogging(ctx, request)
 	conn, err := e.MakeVdsConnection(request.Vds, request.Sas)
@@ -124,10 +139,6 @@ func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
 		return
 	}
 
-	handle, err := vds.NewVDSHandle(conn)
-	if abortOnError(ctx, err) { return }
-	defer handle.Close()
-
 	coordinateSystem, err := vds.GetCoordinateSystem(
 		strings.ToLower(request.CoordinateSystem),
 	)
@@ -135,15 +146,68 @@ func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
 
 	interpolation, err := vds.GetInterpolationMethod(request.Interpolation)
 	if abortOnError(ctx, err) { return }
+	
+	handle, err := vds.NewVDSHandle(conn)
+	if abortOnError(ctx, err) { return }
+	defer handle.Close()
 
-	metadata, err := handle.GetFenceMetadata(request.Coordinates)
+	shape, err := handle.Shape()
 	if abortOnError(ctx, err) { return }
 
-	data, err := handle.GetFence(
-		coordinateSystem,
-		request.Coordinates,
-		interpolation,
-	)
+	nParts := e.Goroutines
+	responses := make(chan FencePart, nParts)
+	errors    := make(chan error,     nParts) 
+	
+	nTraces := len(request.Coordinates)
+	nTracesPerPart := int(math.Ceil(float64(nTraces) / float64(nParts)))
+	partSize := nTracesPerPart * shape.Samples * 4
+
+	start := 0
+	partN := 0
+	remaining := nTraces
+	for remaining > 0 { 
+		size := min(nTracesPerPart, remaining)
+		end := start + size
+
+		go func(start, end, part int) {
+			handle, err := vds.NewVDSHandle(conn)
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer handle.Close()
+
+			data, err := handle.GetFence(
+				coordinateSystem,
+				request.Coordinates[start : end],
+				interpolation,
+			)
+			if err != nil {
+				errors <- err
+				return
+			}
+
+			responses <- FencePart{ data: data, part: part }
+		}(start, end, partN)
+
+		start = end
+		remaining -= size
+		partN++
+	}
+
+	data := make([]byte, nTraces * shape.Samples * 4)
+	for i := 0; i < partN; i++ {
+		select {
+		case err := <-errors:
+			if abortOnError(ctx, err) { return }
+		case response := <-responses: 
+			start := response.part * partSize
+			end   := start + len(response.data)
+			copy(data[start : end], response.data)
+		}
+	}
+
+	metadata, err := handle.GetFenceMetadata(request.Coordinates)
 	if abortOnError(ctx, err) { return }
 
 	e.Cache.Set(cacheKey, cache.NewCacheEntry([][]byte{data}, metadata));
