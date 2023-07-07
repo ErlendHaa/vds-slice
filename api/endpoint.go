@@ -170,13 +170,11 @@ func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
 		end := start + size
 
 		go func(start, end, part int) {
-			handle, err := vds.NewVDSHandle(conn)
-			if err != nil {
-				errors <- err
-				return
-			}
-			defer handle.Close()
-
+			// TODO: The handle itself should be threadsafe (assuming
+			// OpenVDS::Handle is threadsafe, which I'm not completly sure
+			// about btw). But the context object it uses for error messageging
+			// is not threadsafe. That should be fairly easy to fix, but I've
+			// ignored it for now.
 			data, err := handle.GetFence(
 				coordinateSystem,
 				request.Coordinates[start : end],

@@ -175,7 +175,7 @@ func setupApp(app *gin.Engine, endpoint *api.Endpoint, metric * metrics.Metrics)
 // @license.url  https://www.gnu.org/licenses/agpl-3.0.en.html
 // @schemes      https
 func main() {
-	fmt.Println("Running with 'goroutines - multiple handles'")
+	fmt.Println("Running with 'goroutines - single handle'")
 	opts := parseopts()
 
 	storageAccounts := strings.Split(opts.storageAccounts, ",")
