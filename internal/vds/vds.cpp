@@ -22,6 +22,7 @@
 #include "metadatahandle.hpp"
 #include "regularsurface.hpp"
 #include "subvolume.hpp"
+#include "threadpool.hpp"
 #include "verticalwindow.hpp"
 
 void response_delete(struct response* buf) {
@@ -292,6 +293,156 @@ void fetch_slice_metadata(
     
     meta["geospatial"] = json_slice_geospatial(metadata, direction,axis, lineno);
     return to_response(meta, out);
+}
+
+std::unique_ptr< voxel[] > create_coordinates(
+    DataHandle& handle,
+    enum coordinate_system coordinate_system,
+    const float* coordinates,
+    size_t npoints
+) {
+    MetadataHandle const& metadata = handle.get_metadata();
+
+    std::unique_ptr< voxel[] > coords(new voxel[npoints]{{0}});
+
+    auto coordinate_transformer = metadata.coordinate_transformer();
+    auto transform_coordinate = [&] (const float x, const float y) {
+        switch (coordinate_system) {
+            case INDEX:
+                return OpenVDS::Vector<double, 3> {x, y, 0};
+            case ANNOTATION:
+                return coordinate_transformer.AnnotationToIJKPosition({x, y, 0});
+            case CDP:
+                return coordinate_transformer.WorldToIJKPosition({x, y, 0});
+            default: {
+                throw std::runtime_error("Unhandled coordinate system");
+            }
+        }
+    };
+
+    Axis const& inline_axis = metadata.iline();
+    Axis const& crossline_axis = metadata.xline();
+
+    for (size_t i = 0; i < npoints; i++) {
+        const float x = *(coordinates++);
+        const float y = *(coordinates++);
+
+        auto coordinate = transform_coordinate(x, y);
+
+        auto validate_boundary = [&] (const int voxel, Axis const& axis) {
+            const auto min = -0.5;
+            const auto max = axis.nsamples() - 0.5;
+            if(coordinate[voxel] < min || coordinate[voxel] >= max) {
+                const std::string coordinate_str =
+                    "(" +std::to_string(x) + "," + std::to_string(y) + ")";
+                throw std::runtime_error(
+                    "Coordinate " + coordinate_str + " is out of boundaries "+
+                    "in dimension "+ std::to_string(voxel)+ "."
+                );
+            }
+        };
+
+        validate_boundary(0, inline_axis);
+        validate_boundary(1, crossline_axis);
+
+        /* OpenVDS' transformers and OpenVDS data request functions have
+         * different definition of where a datapoint is. E.g. A transformer
+         * (To voxel or ijK) will return (0,0,0) for the first sample in
+         * the cube. The request functions on the other hand assumes the
+         * data is located in the center of a voxel. I.e. that the first
+         * sample is at (0.5, 0.5, 0.5). This is a *VERY* sharp edge in the
+         * OpenVDS API and borders on a bug. It means we cannot directly
+         * use the output from the transformers as input to the request
+         * functions.
+         */
+        coordinate[0] += 0.5;
+        coordinate[1] += 0.5;
+
+        coords[i][   inline_axis.dimension()] = coordinate[0];
+        coords[i][crossline_axis.dimension()] = coordinate[1];
+    }
+
+    return coords;
+}
+
+DataHandle open(std::string url, std::string credentials) {
+    OpenVDS::Error error;
+    auto f = OpenVDS::Open(url, credentials, error);
+    if(error.code != 0) {
+        throw std::runtime_error("Could not open VDS: " + error.string);
+    }
+    
+    return DataHandle(std::move(f));
+}
+
+void fetch_fence2(
+    ThreadPool& pool,
+    std::size_t concurrency,
+    std::string const& url,
+    std::string const& credentials,
+    enum coordinate_system coordinate_system,
+    const float* coordinates,
+    size_t ncoordinates,
+    enum interpolation_method interpolation,
+    response* out
+) {
+    OpenVDS::Error error;
+    auto f = OpenVDS::Open(url, credentials, error);
+    if(error.code != 0) {
+        throw std::runtime_error("Could not open VDS: " + error.string);
+    }
+    DataHandle handle(std::move(f));
+
+    auto traces = create_coordinates(
+        handle,
+        coordinate_system,
+        coordinates,
+        ncoordinates
+    );
+
+    std::size_t ntraces_per_task = ceil(
+        static_cast< float >(ncoordinates) / 
+        static_cast< float >(concurrency)
+    );
+    
+    std::int64_t const requestsize = handle.traces_buffer_size(ncoordinates);
+    std::int64_t const tracesize   = handle.traces_buffer_size(1);
+    std::unique_ptr< char[] > data(new char[requestsize]);
+
+    std::vector< std::future< void > > promises;
+    
+    std::size_t offset = 0;
+    std::size_t remaining = ncoordinates;
+    while (remaining > 0) {
+        auto ntraces = std::min(ntraces_per_task, remaining);
+
+        char * const dst = data.get() + offset * tracesize;
+        std::size_t  dstsize = ntraces * tracesize;
+        auto firsttrace = traces.get() + offset;
+
+        auto task = [&, dst, dstsize, firsttrace, ntraces](){
+            auto handle = open(url, credentials);
+            handle.read_traces(
+                dst, 
+                dstsize,
+                firsttrace,
+                ntraces,
+                interpolation
+            );
+        };
+
+        auto promise = pool.enqueue(task);
+        promises.push_back( std::move(promise) );
+
+        offset += ntraces;
+        remaining -= ntraces;
+    }
+
+    for (const auto& promise : promises) {
+        promise.wait();
+    }
+
+    return to_response(std::move(data), requestsize, out);
 }
 
 void fetch_fence(
@@ -706,6 +857,31 @@ int datahandle_free(Context* ctx, DataHandle* f) {
     }
 }
 
+int threadpool_new(Context* ctx, ThreadPool** pool) {
+    try {
+        if (not pool) throw detail::nullptr_error("Invalid out pointer");
+
+        *pool = new ThreadPool(std::thread::hardware_concurrency());
+        return STATUS_OK;
+    } catch(const std::exception& e) {
+        if (ctx) ctx->errmsg = e.what();
+        return STATUS_RUNTIME_ERROR;
+    }
+}
+
+int threadpool_delete(Context* ctx, ThreadPool* pool) {
+    try {
+        if (not pool) return STATUS_OK;
+
+        delete pool;
+
+        return STATUS_OK;
+    } catch(const std::exception& e) {
+        if (ctx) ctx->errmsg = e.what();
+        return STATUS_RUNTIME_ERROR;
+    }
+}
+
 int regular_surface_new(
     Context* ctx,
     const float* data,
@@ -805,6 +981,39 @@ int fence(
 
         fetch_fence(
             *handle,
+            coordinate_system,
+            coordinates,
+            npoints,
+            interpolation_method,
+            out
+        );
+        return STATUS_OK;
+    } catch (...) {
+        return handle_exception(ctx, std::current_exception());
+    }
+}
+
+int fence2(
+    Context* ctx,
+    ThreadPool* pool,
+    size_t concurrency,
+    const char* url,
+    const char* credentials,
+    enum coordinate_system coordinate_system,
+    const float* coordinates,
+    size_t npoints,
+    enum interpolation_method interpolation_method,
+    response* out
+) {
+    try {
+        if (not out)  throw detail::nullptr_error("Invalid out pointer");
+        if (not pool) throw detail::nullptr_error("Invalid handle");
+
+        fetch_fence2(
+            *pool,
+            concurrency,
+            url,
+            credentials,
             coordinate_system,
             coordinates,
             npoints,

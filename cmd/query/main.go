@@ -26,6 +26,7 @@ type opts struct {
 	cacheSize       uint32
 	metrics         bool
 	metricsPort     uint32
+	concurrency     uint32
 }
 
 func parseAsUint32(fallback uint32, value string) uint32 {
@@ -65,6 +66,7 @@ func parseopts() opts {
 		cacheSize:       parseAsUint32(0,    os.Getenv("VDSSLICE_CACHE_SIZE")),
 		metrics:         parseAsBool(false,  os.Getenv("VDSSLICE_METRICS")),
 		metricsPort:     parseAsUint32(8081, os.Getenv("VDSSLICE_METRICS_PORT")),
+		concurrency:     parseAsUint32(8,    os.Getenv("VDSSLICE_CONCURRENCY")),
 	}
 
 	getopt.FlagLong(
@@ -116,7 +118,17 @@ func parseopts() opts {
 		"Can also be set by enviroment variable 'VDSSLICE_METRICS_PORT'",
 		"int",
 	)
-
+	
+	getopt.FlagLong(
+		&opts.concurrency,
+		"concurrency",
+		0,
+		"Number of c++ threads to use for fetching a request. " +
+		"Defaults to 8.\n" +
+		"Can also be set by enviroment variable 'VDSSLICE_CONCURRENCY'",
+		"int",
+	)
+	
 	getopt.Parse()
 	if *help {
 		getopt.Usage()
@@ -163,13 +175,23 @@ func setupApp(app *gin.Engine, endpoint *api.Endpoint, metric * metrics.Metrics)
 // @license.url  https://www.gnu.org/licenses/agpl-3.0.en.html
 // @schemes      https
 func main() {
+	fmt.Println("Running with 'goroutines - multiple handles'")
 	opts := parseopts()
 
 	storageAccounts := strings.Split(opts.storageAccounts, ",")
 
+	pool, err := vds.NewCThreadPool()
+	if err != nil {
+		panic(err)
+	}
+
+	defer pool.Close()
+
 	endpoint := api.Endpoint{
 		MakeVdsConnection: vds.MakeAzureConnection(storageAccounts),
 		Cache:             cache.NewCache(opts.cacheSize),
+		ThreadPool:        pool,
+		Concurrency:       int(opts.concurrency),
 	}
 
 	app := gin.New()

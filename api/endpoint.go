@@ -53,6 +53,8 @@ func abortOnError(ctx *gin.Context, err error) bool {
 type Endpoint struct {
 	MakeVdsConnection vds.ConnectionMaker
 	Cache             cache.Cache
+	ThreadPool        vds.CThreadPool
+	Concurrency       int
 }
 
 func prepareRequestLogging(ctx *gin.Context, request Stringable) {
@@ -139,10 +141,13 @@ func (e *Endpoint) fence(ctx *gin.Context, request FenceRequest) {
 	metadata, err := handle.GetFenceMetadata(request.Coordinates)
 	if abortOnError(ctx, err) { return }
 
-	data, err := handle.GetFence(
+	data, err := vds.GetFence2(
+		conn,
 		coordinateSystem,
 		request.Coordinates,
 		interpolation,
+		e.ThreadPool,
+		e.Concurrency,
 	)
 	if abortOnError(ctx, err) { return }
 

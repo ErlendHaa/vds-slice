@@ -269,6 +269,102 @@ func NewRegularSurface(
 	return RegularSurface{ cSurface: cSurface }, nil
 }
 
+type CThreadPool interface {
+	Close() error
+	Get() *C.struct_ThreadPool
+}
+
+type cThreadPool struct {
+	cPool *C.struct_ThreadPool
+}
+
+func (c *cThreadPool) Close() error {
+	var cCtx = C.context_new()
+	defer C.context_free(cCtx)
+
+	cErr := C.threadpool_delete(cCtx, c.cPool)
+	
+	return toError(cErr, cCtx)
+}
+
+func (c *cThreadPool) Get() *C.struct_ThreadPool {
+	return c.cPool
+}
+
+func NewCThreadPool() (*cThreadPool, error) {
+	var cCtx = C.context_new()
+	defer C.context_free(cCtx)
+
+	var cPool *C.struct_ThreadPool
+	cErr := C.threadpool_new(cCtx, &cPool)
+
+	if err := toError(cErr, cCtx); err != nil {
+		return nil, err
+	}
+
+	return &cThreadPool{ cPool: cPool }, nil
+}
+
+func GetFence2(
+	conn Connection,
+	coordinateSystem int,
+	coordinates [][]float32,
+	interpolation int,
+	pool CThreadPool,
+	concurrency int,
+) ([]byte, error) {
+	curl := C.CString(conn.Url())
+	defer C.free(unsafe.Pointer(curl))
+
+	ccred := C.CString(conn.ConnectionString())
+	defer C.free(unsafe.Pointer(ccred))
+
+	var cctx = C.context_new()
+	defer C.context_free(cctx)
+
+	coordinate_len := 2
+	ccoordinates := make([]C.float, len(coordinates) * coordinate_len)
+	for i := range coordinates {
+
+		if len(coordinates[i]) != coordinate_len  {
+			msg := fmt.Sprintf(
+				"invalid coordinate %v at position %d, expected [x y] pair",
+				coordinates[i],
+				i,
+			)
+			return nil, NewInvalidArgument(msg)
+		}
+
+		for j := range coordinates[i] {
+			ccoordinates[i * coordinate_len  + j] = C.float(coordinates[i][j])
+		}
+	}
+
+	var result C.struct_response
+	cErr := C.fence2(
+		cctx,
+		pool.Get(),
+		C.size_t(concurrency),
+		curl,
+		ccred,
+		C.enum_coordinate_system(coordinateSystem),
+		&ccoordinates[0],
+		C.size_t(len(coordinates)),
+		C.enum_interpolation_method(interpolation),
+		&result,
+	)
+
+	defer C.response_delete(&result)
+
+	if err := toError(cErr, cctx); err != nil {
+		return nil, err
+	}
+
+	buf := C.GoBytes(unsafe.Pointer(result.data), C.int(result.size))
+	return buf, nil
+}
+
+
 type VDSHandle struct {
 	handle *C.struct_DataHandle
 	ctx    *C.struct_Context

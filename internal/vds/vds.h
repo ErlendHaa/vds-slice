@@ -49,6 +49,13 @@ void response_delete(struct response*);
 struct DataHandle;
 typedef struct DataHandle DataHandle;
 
+struct ThreadPool;
+typedef struct ThreadPool ThreadPool;
+
+int threadpool_new(Context* ctx, ThreadPool** pool);
+
+int threadpool_delete(Context* ctx, ThreadPool* pool);
+
 /** Create a new (VDS) DataHandle instance */
 int datahandle_new(
     Context* ctx,
@@ -147,6 +154,19 @@ int slice_metadata(
 int fence(
     Context* ctx,
     DataHandle* handle,
+    enum coordinate_system coordinate_system,
+    const float* points,
+    size_t npoints,
+    enum interpolation_method interpolation_method,
+    response* out
+);
+
+int fence2(
+    Context* ctx,
+    ThreadPool* pool,
+    size_t concurrency,
+    const char* url,
+    const char* credentials,
     enum coordinate_system coordinate_system,
     const float* points,
     size_t npoints,

@@ -202,9 +202,15 @@ func setupTest(t *testing.T, testcase endpointTest) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	ctx, r := gin.CreateTestContext(w)
 
+	pool, err := vds.NewCThreadPool()
+	if err != nil {
+		panic(err)
+	}
 	endpoint := api.Endpoint{
 		MakeVdsConnection: MakeFileConnection(),
 		Cache:             cache.NewNoCache(),
+		ThreadPool:        pool,
+		Concurrency:       4,
 	}
 
 	setupApp(r, &endpoint, nil)

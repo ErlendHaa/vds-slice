@@ -403,14 +403,22 @@ func TestFence(t *testing.T) {
 	}
 
 	interpolationMethod, _ := GetInterpolationMethod("nearest")
-
+	
+	pool, err := NewCThreadPool()
+	if err != nil {
+		require.NoErrorf(t, err, "Could not create threadpool")
+	}
+		
 	for _, testcase := range testcases {
-		handle, _ := NewVDSHandle(well_known)
-		defer handle.Close()
-		buf, err := handle.GetFence(
+		// handle, _ := NewVDSHandle(well_known)
+		// defer handle.Close()
+		buf, err := GetFence2(
+			well_known,
 			testcase.coordinate_system,
 			testcase.coordinates,
 			interpolationMethod,
+			pool,
+			4, // concurrency
 		)
 		require.NoErrorf(t, err,
 			"[coordinate_system: %v] Failed to fetch fence, err: %v",
