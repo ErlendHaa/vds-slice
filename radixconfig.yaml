@@ -10,6 +10,9 @@ spec:
     - name: test
       build:
         from: test
+    - name: grpc
+      build:
+        from: grpc
   components:
     - name: server
       dockerfileName: Dockerfile
@@ -67,3 +70,115 @@ spec:
           horizontalScaling:
             minReplicas: 1
             maxReplicas: 3
+        - environment: grpc
+          enabled: false
+
+    - name: scheduler
+      dockerfileName: Dockerfile.scheduler
+      ports:
+        - name: http
+          port: 8080
+      publicPort: http
+      environmentConfig:
+        - environment: grpc
+          variables:
+            VDSSLICE_PORT: 8080
+            VDSSLICE_CACHE_SIZE: 0 # MB
+            VDSSLICE_JOBS: 64
+            VDSSLICE_WORKER_ADDRESSES: "worker1:8090,worker2:8090,worker3:8090,worker4:8090"
+            VDSSLICE_STORAGE_ACCOUNTS: "https://vdsbenchmark.blob.core.windows.net"
+          resources:
+            requests:
+              memory: "6144Mi"
+              cpu: "3000m"
+          horizontalScaling:
+            minReplicas: 1
+            maxReplicas: 1
+        - environment: dev
+          enabled: false
+        - environment: test
+          enabled: false
+    
+    - name: worker1
+      dockerfileName: Dockerfile.worker
+      ports:
+        - name: http 
+          port: 8090
+      environmentConfig:
+        - environment: grpc
+          variables:
+            VDSSLICE_WORKER_PORTS: ":8090"
+          resources:
+            requests:
+              memory: "6144Mi"
+              cpu: "6000m"
+          horizontalScaling:
+            minReplicas: 1
+            maxReplicas: 1
+        - environment: dev
+          enabled: false
+        - environment: test
+          enabled: false
+    
+    - name: worker2
+      dockerfileName: Dockerfile.worker
+      ports:
+        - name: http 
+          port: 8090
+      environmentConfig:
+        - environment: grpc
+          variables:
+            VDSSLICE_WORKER_PORTS: ":8090"
+          resources:
+            requests:
+              memory: "6144Mi"
+              cpu: "6000m"
+          horizontalScaling:
+            minReplicas: 1
+            maxReplicas: 1
+        - environment: dev
+          enabled: false
+        - environment: test
+          enabled: false
+    
+    - name: worker3
+      dockerfileName: Dockerfile.worker
+      ports:
+        - name: http 
+          port: 8090
+      environmentConfig:
+        - environment: grpc
+          variables:
+            VDSSLICE_WORKER_PORTS: ":8090"
+          resources:
+            requests:
+              memory: "6144Mi"
+              cpu: "6000m"
+          horizontalScaling:
+            minReplicas: 1
+            maxReplicas: 1
+        - environment: dev
+          enabled: false
+        - environment: test
+          enabled: false
+    
+    - name: worker4
+      dockerfileName: Dockerfile.worker
+      ports:
+        - name: http 
+          port: 8090
+      environmentConfig:
+        - environment: grpc
+          variables:
+            VDSSLICE_WORKER_PORTS: ":8090"
+          resources:
+            requests:
+              memory: "6144Mi"
+              cpu: "6000m"
+          horizontalScaling:
+            minReplicas: 1
+            maxReplicas: 1
+        - environment: dev
+          enabled: false
+        - environment: test
+          enabled: false
