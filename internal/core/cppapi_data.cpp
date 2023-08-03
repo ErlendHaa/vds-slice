@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <memory>
+#include <iostream>
 
 #include <OpenVDS/OpenVDS.h>
 #include <OpenVDS/KnownMetadata.h>
@@ -278,9 +279,13 @@ void horizon(
     for (int row = 0; row < surface.nrows(); row++) {
         for (int col = 0; col < surface.ncols(); col++) {
             float depth = surface.value(row, col);
+            
             if (depth == fillvalue) {
                 noval_indicies.push_back(i);
                 i += window.size();
+                if (row  == 296 and col == 530) {
+                    std::cout << "depth:      " << std::to_string(depth) << std::endl << std::endl;
+                }
                 continue;
             }
             
@@ -291,6 +296,9 @@ void horizon(
             auto ij = transform.WorldToAnnotation({cdp.x, cdp.y, 0});
 
             if (not iline.inrange(ij[0]) or not xline.inrange(ij[1])) {
+                if (row  == 296 and col == 530) {
+                    std::cout << "ij:      " << std::to_string(ij[0]) << ", " << std::to_string(ij[1]) << std::endl;
+                }
                 noval_indicies.push_back(i);
                 i += window.size();
                 continue;
@@ -315,6 +323,7 @@ void horizon(
             top    = sample.to_sample_position(top);
             bottom = sample.to_sample_position(bottom);
 
+
             for (double cur_depth = top; cur_depth <= bottom; cur_depth++) {
                 samples[i][  iline.dimension() ] = ij[0];
                 samples[i][  xline.dimension() ] = ij[1];
@@ -334,6 +343,16 @@ void horizon(
         nsamples,
         interpolation
     );
+
+    std::for_each( noval_indicies.begin(), noval_indicies.end(), [&](std::size_t index) {
+        auto i = index / window.size();
+        if (i < 171913 or i > 171915) {
+            return;
+        }
+
+        std::cout << "index:      " << i << std::endl;
+        std::cout << "window top: " << index << std::endl << std::endl;
+    });
 
     write_fillvalue(buffer.get(), noval_indicies, window.size(), fillvalue);
 

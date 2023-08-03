@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <numeric>
 #include <memory>
 #include <stdexcept>
@@ -238,6 +239,17 @@ void calc_attributes(
     for (std::size_t i = from; i < to; ++i) {
         auto depth = surface.value(i);
         auto data  = horizon.at(i);
+
+        if (i == 171913 or i == 171914 or i == 171915 or i == 176046) {;
+            std::cout << "index: " <<  i * horizon.vsize() << std::endl;
+            std::cout << "i:     " << std::to_string(i) << std::endl;
+            std::cout << "depth: " << std::to_string(depth) << std::endl;
+            std::cout << "data:  ";
+            std::for_each(data.begin(), data.end(), [](const auto x) {
+                std::cout << std::to_string(x) << ", ";
+            });
+            std::cout<< std::endl << std::endl;
+        }
 
         if (*data.begin() == fill) {
             fill_all(attrs, fill, i);
