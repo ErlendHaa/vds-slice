@@ -99,6 +99,12 @@ type Array struct {
 	Shape []int `json:"shape" swaggertype:"array,integer" example:"10,50"`
 }
 
+type Bound struct {
+	Direction string
+	Lower     float32
+	Upper     float32
+}
+
 // @Description Slice metadata
 type SliceMetadata struct {
 	Array
@@ -402,13 +408,45 @@ func (v VDSHandle) GetMetadata() ([]byte, error) {
 	return buf, nil
 }
 
-func (v VDSHandle) GetSlice(lineno, direction int) ([]byte, error) {
+func newCSliceBounds(bounds []Bound) ([]C.struct_Bound, error) {
+	var cBounds []C.struct_Bound
+	for _, bound := range bounds {
+		direction, err := GetAxis(bound.Direction)
+		if err != nil {
+			return nil, err
+		}
+
+		cBound := C.struct_Bound{
+			C.float(bound.Lower),
+			C.float(bound.Upper),
+			C.enum_axis_name(direction),
+		}
+		cBounds = append(cBounds, cBound)
+	}
+
+	return cBounds, nil
+}
+
+func (v VDSHandle) GetSlice(lineno, direction int, bounds []Bound) ([]byte, error) {
 	var result C.struct_response
+
+	cBounds, err := newCSliceBounds(bounds)
+	if err != nil {
+		return nil, err
+	}
+
+	var bound *C.struct_Bound
+	if len(cBounds) > 0 {
+		bound = &cBounds[0]
+	}
+
 	cerr := C.slice(
 		v.context(),
 		v.Handle(),
 		C.int(lineno),
 		C.enum_axis_name(direction),
+		bound,
+		C.size_t(len(cBounds)),
 		&result,
 	)
 

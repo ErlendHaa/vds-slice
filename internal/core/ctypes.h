@@ -50,4 +50,10 @@ enum attribute {
     SUMNEG
 };
 
+struct Bound {
+    float lower;
+    float upper;
+    enum axis_name direction;
+};
+
 #endif // VDS_SLICE_CTYPES_H
