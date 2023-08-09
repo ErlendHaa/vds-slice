@@ -92,6 +92,7 @@ void slice_metadata(
     DataHandle& handle,
     Direction const direction,
     int lineno,
+    std::vector< Bound > const& bounds,
     response* out
 ) noexcept (false);
 
