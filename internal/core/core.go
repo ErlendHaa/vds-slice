@@ -99,11 +99,18 @@ type Array struct {
 	Shape []int `json:"shape" swaggertype:"array,integer" example:"10,50"`
 }
 
+// @Description Slice bounds.
 type Bound struct {
-	Direction string
-	Lower     float32
-	Upper     float32
-}
+	// Direction of the bound. See SliceRequest.Direction for valid options
+	Direction string  `json:"direction" binding:"required" example:"inline"`
+
+	// Lower bound - inclusive
+	Lower float32 `json:"lower" binding:"required" example:"100"`
+
+	// Upper bound - inclusive
+	// Upper bound must be greater or equal to lower bound
+	Upper float32 `json:"upper" binding:"required" example:"200"`
+} // @name SliceBound
 
 // @Description Slice metadata
 type SliceMetadata struct {
