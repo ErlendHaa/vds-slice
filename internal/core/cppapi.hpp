@@ -115,6 +115,81 @@ void attributes_metadata(
     response* out
 ) noexcept (false);
 
+/* implementations */
+
+namespace {
+
+void to_response(
+    std::unique_ptr< char[] > data,
+    std::int64_t const size,
+    response* response
+) {
+    /* The data should *not* be free'd on success, as it's returned to CGO */
+    response->data = data.release();
+    response->size = static_cast<unsigned long>(size);
+}
+
+bool equal(const char* lhs, const char* rhs) {
+    return std::strcmp(lhs, rhs) == 0;
+}
+
+} // namespace
+
+namespace detail {
+
+template< typename Coordinate >
+void fetch_fence(
+    DataHandle& handle,
+    const float* coordinates,
+    size_t npoints,
+    enum interpolation_method interpolation_method,
+    response* out
+) {
+    MetadataHandle const& metadata = handle.get_metadata();
+
+    std::unique_ptr< voxel[] > coords(new voxel[npoints]{{0}});
+
+    auto transformer = metadata.transformer();
+
+    Axis inline_axis = metadata.iline();
+    Axis crossline_axis = metadata.xline();
+
+    for (size_t i = 0; i < npoints; i++) {
+        const float x = *(coordinates++);
+        const float y = *(coordinates++);
+        Coordinate coordinate(x, y);
+
+        auto annotation = transformer.to_annotation(coordinate);
+
+        if (transformer.is_out_of_range(annotation)) {
+            throw std::runtime_error(
+                "Coordinate " + coordinate.string() + " is out of range"
+            );
+        }
+
+        auto const center = transformer.to_center(annotation);
+
+        coords[i][   inline_axis.dimension()] = center.i();
+        coords[i][crossline_axis.dimension()] = center.j();
+    }
+
+    std::int64_t const size = handle.traces_buffer_size(npoints);
+
+    std::unique_ptr< char[] > data(new char[size]);
+
+    handle.read_traces(
+        data.get(),
+        size,
+        coords.get(),
+        npoints,
+        interpolation_method
+    );
+
+    return to_response(std::move(data), size, out);
+}
+
+} // namespace detail
+
 } // namespace cppapi
 
 #endif // VDS_SLICE_CPPAPI_HPP

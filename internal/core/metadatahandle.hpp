@@ -8,6 +8,7 @@
 #include "axis.hpp"
 #include "boundingbox.hpp"
 #include "direction.hpp"
+#include "transform.hpp"
 
 class MetadataHandle {
 public:
@@ -25,6 +26,7 @@ public:
     Axis get_axis(Direction const direction) const noexcept (false);
 
     OpenVDS::IJKCoordinateTransformer coordinate_transformer() const noexcept (true);
+    Coords::Transformer transformer() const noexcept (true);
 private:
     OpenVDS::VolumeDataLayout const * const m_layout;
 

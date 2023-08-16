@@ -35,7 +35,7 @@ bool equal(const char* lhs, const char* rhs) {
 }
 
 /** Validate the request against the vds' vertical axis
- *  
+ *
  * Requests for Time and Depth are checked against the axis name and unit of
  * the actual file, while Sample acts as a fallback option where anything goes
  *
@@ -46,12 +46,12 @@ bool equal(const char* lhs, const char* rhs) {
  *     Depth          | Depth or Sample | "m", "ft", or "usft"
  */
 void validate_vertical_axis(
-    Axis const& vertical_axis, 
+    Axis const& vertical_axis,
     Direction const& request
 ) noexcept (false) {
     const auto& unit = vertical_axis.unit();
     const char* vdsunit = unit.c_str();
-    
+
     const auto& name = vertical_axis.name();
     const char* vdsname = name.c_str();
 
@@ -60,7 +60,7 @@ void validate_vertical_axis(
     using Unit = OpenVDS::KnownUnitNames;
     using Label = OpenVDS::KnownAxisNames;
     if (requested_axis == axis_name::DEPTH) {
-        if (not equal(vdsname, Label::Depth()) and 
+        if (not equal(vdsname, Label::Depth()) and
             not equal(vdsname, Label::Sample())
         ) {
             throw detail::bad_request(
@@ -69,8 +69,8 @@ void validate_vertical_axis(
         }
 
         if (
-            not equal(vdsunit, Unit::Meter()) and 
-            not equal(vdsunit, Unit::Foot())  and 
+            not equal(vdsunit, Unit::Meter()) and
+            not equal(vdsunit, Unit::Foot())  and
             not equal(vdsunit, Unit::USSurveyFoot())
         ) {
             throw detail::bad_request(
@@ -81,7 +81,7 @@ void validate_vertical_axis(
     }
 
     if (requested_axis == axis_name::TIME) {
-        if (not equal(vdsname, Label::Time()) and 
+        if (not equal(vdsname, Label::Time()) and
             not equal(vdsname, Label::Sample())
         ) {
             throw detail::bad_request(
@@ -89,7 +89,7 @@ void validate_vertical_axis(
             );
         }
 
-        if (not equal(vdsunit, Unit::Millisecond()) and 
+        if (not equal(vdsunit, Unit::Millisecond()) and
             not equal(vdsunit, Unit::Second())
         ) {
             throw detail::bad_request(
@@ -140,7 +140,7 @@ void slice(
 
     if (direction.is_sample()) {
         validate_vertical_axis(metadata.sample(), direction);
-    }   
+    }
 
     SubVolume bounds(metadata);
     bounds.constrain(metadata, slicebounds);
@@ -162,65 +162,27 @@ void fence(
     enum interpolation_method interpolation_method,
     response* out
 ) {
-    MetadataHandle const& metadata = handle.get_metadata();
-
-    std::unique_ptr< voxel[] > coords(new voxel[npoints]{{0}});
-
-    auto coordinate_transformer = metadata.coordinate_transformer();
-    auto transform_coordinate = [&] (const float x, const float y) {
-        switch (coordinate_system) {
-            case INDEX:
-                return coordinate_transformer.IJKPositionToAnnotation({x, y, 0});
-            case ANNOTATION:
-                return OpenVDS::Vector<double, 3> {x, y, 0};
-            case CDP:
-                return coordinate_transformer.WorldToAnnotation({x, y, 0});
-            default: {
-                throw std::runtime_error("Unhandled coordinate system");
-            }
+    switch (coordinate_system) {
+        case coordinate_system::INDEX: {
+            return detail::fetch_fence< Coords::IJPoint >(
+                handle, coordinates, npoints, interpolation_method, out
+            );
         }
-    };
+        case coordinate_system::ANNOTATION: {
+            return detail::fetch_fence< Coords::TracePoint >(
+                handle, coordinates, npoints, interpolation_method, out
+            );
+        }
 
-    Axis inline_axis = metadata.iline();
-    Axis crossline_axis = metadata.xline();
-
-    for (size_t i = 0; i < npoints; i++) {
-        const float x = *(coordinates++);
-        const float y = *(coordinates++);
-
-        auto coordinate = transform_coordinate(x, y);
-
-        auto validate_boundary = [&] (const int voxel, Axis const& axis) {
-            if(!axis.inrange(coordinate[voxel])){
-                const std::string coordinate_str =
-                    "(" +std::to_string(x) + "," + std::to_string(y) + ")";
-                throw std::runtime_error(
-                    "Coordinate " + coordinate_str + " is out of boundaries "+
-                    "in dimension "+ std::to_string(voxel)+ "."
-                );
-            }
-        };
-
-        validate_boundary(0, inline_axis);
-        validate_boundary(1, crossline_axis);
-
-        coords[i][   inline_axis.dimension()] = inline_axis.to_sample_position(coordinate[0]);
-        coords[i][crossline_axis.dimension()] = crossline_axis.to_sample_position(coordinate[1]);
+        case coordinate_system::CDP: {
+            return detail::fetch_fence< Coords::WorldPoint >(
+                handle, coordinates, npoints, interpolation_method, out
+            );
+        }
+        default: {
+            throw std::runtime_error("Unhandled coordinate system");
+        }
     }
-
-    std::int64_t const size = handle.traces_buffer_size(npoints);
-
-    std::unique_ptr< char[] > data(new char[size]);
-
-    handle.read_traces(
-        data.get(),
-        size,
-        coords.get(),
-        npoints,
-        interpolation_method
-    );
-
-    return to_response(std::move(data), size, out);
 }
 
 void horizon_size(
@@ -262,6 +224,7 @@ void horizon(
 
     MetadataHandle const& metadata = handle.get_metadata();
     auto transform = metadata.coordinate_transformer();
+    auto coordinates = metadata.transformer();
 
     auto iline  = metadata.iline ();
     auto xline  = metadata.xline();
@@ -315,14 +278,15 @@ void horizon(
             i += window.size();
             continue;
         }
-        
+
         depth = window.nearest(depth);
 
         auto const cdp = surface.to_cdp(row, col);
 
-        auto ij = transform.WorldToAnnotation({cdp.x, cdp.y, 0});
+        auto tracepos = coordinates.to_annotation(Coords::WorldPoint(cdp.x, cdp.y));
 
-        if (not iline.inrange(ij[0]) or not xline.inrange(ij[1])) {
+        // if (coordinates.is_out_of_range(tracepos)) {
+        if (not iline.inrange(tracepos.iline()) or not xline.inrange(tracepos.xline())) {
             noval_indicies.push_back(i);
             i += window.size();
             continue;
@@ -342,15 +306,12 @@ void horizon(
             );
         }
 
-        ij[0]  = iline.to_sample_position(ij[0]);
-        ij[1]  = xline.to_sample_position(ij[1]);
-
-
-        top    = sample.to_sample_position(top);
+        auto annotations = tracepos.extend(top);
+        auto center = coordinates.to_center(annotations);
         for (int idx = 0; idx < window.size(); ++idx) {
-            samples[i][  iline.dimension() ] = ij[0];
-            samples[i][  xline.dimension() ] = ij[1];
-            samples[i][ sample.dimension() ] = top + idx;
+            samples[i][  iline.dimension() ] = center.i();
+            samples[i][  xline.dimension() ] = center.j();
+            samples[i][ sample.dimension() ] = center.k() + idx;
             ++i;
         }
     }

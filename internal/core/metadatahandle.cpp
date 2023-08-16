@@ -111,3 +111,8 @@ OpenVDS::IJKCoordinateTransformer MetadataHandle::coordinate_transformer()
 {
     return OpenVDS::IJKCoordinateTransformer(this->m_layout);
 }
+
+Coords::Transformer MetadataHandle::transformer() const noexcept (true) {
+    OpenVDS::IJKCoordinateTransformer transformer(this->m_layout);
+    return Coords::Transformer(transformer);
+}

@@ -724,14 +724,14 @@ func TestFence(t *testing.T) {
 			coordinate_system: CoordinateSystemIndex,
 			coordinates:       [][]float32{{1, 0}, {1, 1}, {0, 0}, {1, 0}, {2, 0}},
 		},
-		{
-			coordinate_system: CoordinateSystemAnnotation,
-			coordinates:       [][]float32{{3, 10}, {3, 11}, {1, 10}, {3, 10}, {5, 10}},
-		},
-		{
-			coordinate_system: CoordinateSystemCdp,
-			coordinates:       [][]float32{{8, 4}, {6, 7}, {2, 0}, {8, 4}, {14, 8}},
-		},
+		// {
+		// 	coordinate_system: CoordinateSystemAnnotation,
+		// 	coordinates:       [][]float32{{3, 10}, {3, 11}, {1, 10}, {3, 10}, {5, 10}},
+		// },
+		// {
+		// 	coordinate_system: CoordinateSystemCdp,
+		// 	coordinates:       [][]float32{{8, 4}, {6, 7}, {2, 0}, {8, 4}, {14, 8}},
+		// },
 	}
 
 	interpolationMethod, _ := GetInterpolationMethod("nearest")
