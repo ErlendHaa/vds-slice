@@ -66,7 +66,7 @@ struct IndexBase : public basic_tuple< IndexBase< T, Dims >, T, Dims > {
 } // namespace
 
 /* IJK (index) coordinate system - defined in the upper-left corner of the voxel*/
-using Index = std::size_t;
+using Index = double;
 
 template < std::size_t Dims >
 struct IndexPoint : public IndexBase< Index, Dims > {
